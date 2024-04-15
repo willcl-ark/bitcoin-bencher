@@ -1,20 +1,33 @@
 use std::path::Path;
 
+use anyhow::{anyhow, Result};
 use log::info;
-use rusqlite::{params, Connection, Result};
+use rusqlite::{params, Connection};
 
 use crate::cli;
 
-pub fn setup_db(args: &cli::Cli) -> Result<rusqlite::Connection> {
+pub fn get_db(args: &cli::Cli) -> Result<rusqlite::Connection> {
     let data_dir_path = Path::new(&args.bench_data_dir).join("bench_bitcoin");
     info!(
         "Using data directory: {:?} with db name: {:?}",
-        &data_dir_path, &args.bench_db_name
+        data_dir_path, args.bench_db_name
     );
-    std::fs::create_dir_all(&data_dir_path).expect("Unable to create data dir");
+
+    std::fs::create_dir_all(&data_dir_path).map_err(|e| {
+        anyhow!(
+            "Failed to create data directory '{}': {}",
+            data_dir_path.display(),
+            e
+        )
+    })?;
+
     let db_path = data_dir_path.join(&args.bench_db_name);
-    let db_path_str = db_path.to_str().expect("Path conversion error");
-    let conn = Connection::open(db_path_str)?;
+    let db_path_str = db_path
+        .to_str()
+        .ok_or_else(|| anyhow!("Failed to convert database path to string"))?;
+
+    let conn = Connection::open(db_path_str)
+        .map_err(|e| anyhow!("Failed to open database at '{}': {}", db_path_str, e))?;
 
     // Create the tables
     conn.execute(

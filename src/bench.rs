@@ -1,13 +1,19 @@
-use log::{error, info};
 use std::process::{Command, Stdio};
+
+use anyhow::Result;
+use log::{error, info};
 
 use crate::cli::Cli;
 use crate::config::Config;
 use crate::util;
+
 extern crate exitcode;
 
-pub fn make_subs(config: &mut Config, cli: &Cli) {
-    let nproc = util::get_nproc().trim().to_string();
+pub fn make_subs(config: &mut Config, cli: &Cli) -> Result<()> {
+    let nproc = util::get_nproc().unwrap_or_else(|e| {
+        error!("{}", e);
+        std::process::exit(exitcode::OSERR);
+    });
 
     for benchmark in &mut config.benchmarks.list {
         benchmark.args = benchmark
@@ -22,10 +28,11 @@ pub fn make_subs(config: &mut Config, cli: &Cli) {
             })
             .collect();
     }
+    Ok(())
 }
 
-pub fn run_benchmarks(cli: &Cli, config: &mut Config) {
-    make_subs(config, cli);
+pub fn run_benchmarks(cli: &Cli, config: &mut Config) -> Result<()> {
+    make_subs(config, cli)?;
 
     assert!(std::env::set_current_dir(&cli.bitcoin_src_dir).is_ok());
     info!(
@@ -33,6 +40,8 @@ pub fn run_benchmarks(cli: &Cli, config: &mut Config) {
         &cli.bitcoin_src_dir.display()
     );
 
+    // TODO: Generate ID for each benchmark
+    // TODO: Monitor with procfs while benchmark is running
     for benchmark in &config.benchmarks.list {
         info!(
             "Running benchmark: {} using {}",
@@ -40,6 +49,8 @@ pub fn run_benchmarks(cli: &Cli, config: &mut Config) {
         );
         let command = Command::new(benchmark.command.trim())
             .args(&config.hyperfine.args)
+            .args(&benchmark.format)
+            .args(&benchmark.outfile)
             .args(&benchmark.args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -52,8 +63,7 @@ pub fn run_benchmarks(cli: &Cli, config: &mut Config) {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            error!("Benchmark {} failed: {}", benchmark.name, stderr);
-            std::process::exit(exitcode::SOFTWARE);
+            anyhow::bail!("Benchmark {} failed: {}", benchmark.name, stderr);
         } else {
             let stdout = String::from_utf8_lossy(&output.stdout);
             info!(
@@ -62,4 +72,5 @@ pub fn run_benchmarks(cli: &Cli, config: &mut Config) {
             );
         }
     }
+    Ok(())
 }
