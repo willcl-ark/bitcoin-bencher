@@ -65,9 +65,9 @@ pub fn make_subs(config: &mut Config, cli: &Cli) -> Result<()> {
 pub fn run_benchmarks(
     cli: &Cli,
     config: &mut Config,
-    date: i64,
+    date: &i64,
     commit_id: String,
-    db_conn: rusqlite::Connection,
+    db_conn: &rusqlite::Connection,
 ) -> Result<()> {
     make_subs(config, cli)?;
 
@@ -77,7 +77,7 @@ pub fn run_benchmarks(
         &cli.bitcoin_src_dir.display()
     );
 
-    let run_id = record_run(&db_conn, date, commit_id)?;
+    let run_id = record_run(db_conn, *date, commit_id)?;
     // TODO: Monitor with procfs while benchmark is running
     for benchmark in &mut config.benchmarks.list {
         info!(
@@ -116,7 +116,7 @@ pub fn run_benchmarks(
             // TODO: added a loop here, but I think we'll always only have a single run. Remove?
             for result in results.results {
                 record_job(
-                    &db_conn,
+                    db_conn,
                     run_id,
                     result.command,
                     result.mean,

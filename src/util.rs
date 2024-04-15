@@ -50,7 +50,8 @@ pub fn check_source_file(cli: &Cli) -> Result<PathBuf> {
     Ok(src_dir_path)
 }
 
-pub fn checkout_commit(src_dir_path: &PathBuf, date: DateTime<Utc>) -> Result<String> {
+pub fn checkout_commit(src_dir_path: &PathBuf, date: &i64) -> Result<String> {
+    let date = Utc.timestamp_opt(*date, 0).unwrap();
     let formatted_date = date.format("%Y-%m-%d %H:%M").to_string();
 
     let commit_id_output = Command::new("git")
