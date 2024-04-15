@@ -2,7 +2,7 @@
 binaries = ["bitcoind", "hyperfine", "git"]
 
 [hyperfine]
-args = ["--runs", "1"]
+args = ["--runs", "1", "--time-unit", "second"]
 
 [benchmarks]
 list = [

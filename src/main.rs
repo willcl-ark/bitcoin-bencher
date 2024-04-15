@@ -32,7 +32,7 @@ fn main() -> Result<()> {
     }
 
     // Setup db
-    let _connection = database::get_db(&cli).unwrap_or_else(|e| {
+    let db_connection = database::get_db(&cli).unwrap_or_else(|e| {
         error!("Error getting database: {}", e);
         std::process::exit(exitcode::CANTCREAT);
     });
@@ -52,7 +52,9 @@ fn main() -> Result<()> {
     // TODO: Check out code at commit/day
 
     // Run benchmarks
-    if let Err(e) = bench::run_benchmarks(&cli, &mut config) {
+    // TODO: allow passing this as date from CLI
+    let date = chrono::Utc::now().timestamp();
+    if let Err(e) = bench::run_benchmarks(&cli, &mut config, date, db_connection) {
         error!("{}", e);
         std::process::exit(exitcode::SOFTWARE);
     };
