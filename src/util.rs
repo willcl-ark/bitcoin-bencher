@@ -3,6 +3,7 @@ use std::{
     process::Command,
 };
 
+use chrono::prelude::*;
 use log::{info, warn};
 use which::which;
 
@@ -47,6 +48,39 @@ pub fn check_source_file(cli: &Cli) -> Result<PathBuf> {
     }
 
     Ok(src_dir_path)
+}
+
+pub fn checkout_commit(src_dir_path: &PathBuf, date: DateTime<Utc>) -> Result<String> {
+    let formatted_date = date.format("%Y-%m-%d %H:%M").to_string();
+
+    let commit_id_output = Command::new("git")
+        .args(["rev-list", "-n", "1", "--before", &formatted_date, "master"])
+        .current_dir(src_dir_path)
+        .output()
+        .with_context(|| "Failed to execute git rev-list")?;
+
+    if !commit_id_output.status.success() {
+        let stderr = String::from_utf8_lossy(&commit_id_output.stderr);
+        anyhow::bail!("git rev-list failed: {}", stderr);
+    }
+
+    let commit_id = String::from_utf8_lossy(&commit_id_output.stdout)
+        .trim()
+        .to_string();
+
+    let checkout_output = Command::new("git")
+        .args(["checkout", &commit_id, "--detach"])
+        .current_dir(src_dir_path)
+        .output()
+        .with_context(|| "Failed to execute git checkout")?;
+
+    if !checkout_output.status.success() {
+        let stderr = String::from_utf8_lossy(&checkout_output.stderr);
+        anyhow::bail!("git checkout failed: {}", stderr);
+    }
+
+    info!("Successfully checked out commit {}", commit_id);
+    Ok(commit_id)
 }
 
 pub fn fetch_repo(src_dir_path: &PathBuf) -> Result<()> {

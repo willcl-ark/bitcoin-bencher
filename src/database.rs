@@ -10,7 +10,8 @@ fn create_tables(conn: &Connection) -> Result<()> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS runs (
             run_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date DATETIME NOT NULL
+            date DATETIME NOT NULL,
+            commit_id TEXT NOT NULL
         );",
         params![],
     )?;
@@ -45,8 +46,11 @@ fn create_tables(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-pub fn record_run(conn: &Connection, date: i64) -> Result<i64> {
-    conn.execute("INSERT INTO runs (date) VALUES (?)", params![date])?;
+pub fn record_run(conn: &Connection, date: i64, commit_id: String) -> Result<i64> {
+    conn.execute(
+        "INSERT INTO runs (date, commit_id) VALUES (?, ?)",
+        params![date, commit_id],
+    )?;
     Ok(conn.last_insert_rowid())
 }
 

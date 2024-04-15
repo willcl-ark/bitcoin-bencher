@@ -66,6 +66,7 @@ pub fn run_benchmarks(
     cli: &Cli,
     config: &mut Config,
     date: i64,
+    commit_id: String,
     db_conn: rusqlite::Connection,
 ) -> Result<()> {
     make_subs(config, cli)?;
@@ -76,7 +77,7 @@ pub fn run_benchmarks(
         &cli.bitcoin_src_dir.display()
     );
 
-    let run_id = record_run(&db_conn, date)?;
+    let run_id = record_run(&db_conn, date, commit_id)?;
     // TODO: Monitor with procfs while benchmark is running
     for benchmark in &mut config.benchmarks.list {
         info!(
