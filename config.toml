@@ -1,0 +1,15 @@
+[settings]
+binaries = ["bitcoind", "hyperfine", "git"]
+
+[hyperfine]
+args = ["--runs", "1"]
+
+[benchmarks]
+list = [
+    { name = "autogen", command = "hyperfine", args = ["--export-json", "autogen-results.json", "./autogen.sh"] },
+    { name = "configure", command = "hyperfine", args = ["--export-json", "configure-results.json", "CC=clang-15 CXX=clang++-15 ./configure"] },
+    { name = "make", command = "hyperfine", args = ["--export-json", "make-results.json", "make -j{cores}"] },
+    { name = "unit-tests", command = "hyperfine", args = ["--export-json", "unit-test-results.json", "make check -j{cores}"] },
+    { name = "functional-tests", command = "hyperfine", args = ["--export-json", "function-test-results.json", "test/functional/test_runner.py --cachedir=/mnt/tmp/cache --tmpdir=/mnt/tmp"] }
+    # { name = "IBD", command = "hyperfine", args = ["--export-json", "IBD-results.json", "./src/bitcoind -datadir={datadir} -connect=127.0.0.1:8333, stopatheight=800000 port=8444 rpcport=8445 dbcache=16384"] }
+]
