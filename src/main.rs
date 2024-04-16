@@ -1,6 +1,11 @@
 use anyhow::Result;
 use env_logger::Env;
 use log::error;
+
+use cli::Cli;
+use config::Config;
+use database::Database;
+
 extern crate exitcode;
 
 mod bench;
@@ -15,16 +20,17 @@ fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     // Parse CLI args
-    let cli = cli::parse_cli().unwrap_or_else(|e| {
-        error!("Error parsing cli: {}", e);
+    let cli = Cli::init().unwrap_or_else(|e| {
+        error!("Error initialising cli: {}", e);
         std::process::exit(exitcode::CONFIG);
     });
 
     // Load configuration from TOML
-    let mut config = config::read_config_file().unwrap_or_else(|e| {
-        error!("Error reading config.toml: {}", e);
-        std::process::exit(exitcode::CONFIG);
-    });
+    let mut config = Config::load_from_file(&cli.config_file, &cli.bitcoin_data_dir)
+        .unwrap_or_else(|e| {
+            error!("Error reading config.toml: {}", e);
+            std::process::exit(exitcode::CONFIG);
+        });
 
     // Check required binaries exist on PATH
     if let Err(e) = util::check_binaries_exist(&config) {
@@ -33,7 +39,7 @@ fn main() -> Result<()> {
     }
 
     // Setup db
-    let db_connection = database::get_db(&cli).unwrap_or_else(|e| {
+    let database = Database::new(&cli.bench_data_dir, &cli.bench_db_name).unwrap_or_else(|e| {
         error!("Error getting database: {}", e);
         std::process::exit(exitcode::CANTCREAT);
     });
@@ -57,7 +63,7 @@ fn main() -> Result<()> {
     });
 
     // Run benchmarks
-    let mut bencher = bench::Bencher::new(&cli, &mut config, &db_connection);
+    let mut bencher = bench::Bencher::new(&cli, &mut config, &database);
     if let Err(e) = bencher.run(&cli.date.unwrap(), commit_id) {
         error!("{}", e);
         std::process::exit(exitcode::SOFTWARE);

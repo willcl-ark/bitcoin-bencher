@@ -32,7 +32,7 @@ pub fn check_binaries_exist(config: &config::Config) -> Result<()> {
 }
 
 pub fn check_source_file(cli: &Cli) -> Result<PathBuf> {
-    let src_dir_path = Path::new(&cli.bitcoin_src_dir).join("src");
+    let src_dir_path = Path::new(&cli.src_dir).join("src");
     let init_cpp_path = src_dir_path.join("init.cpp");
 
     if !init_cpp_path.exists() {
@@ -119,14 +119,4 @@ pub fn get_nproc() -> Result<String> {
     Ok(String::from_utf8_lossy(&nproc_output.stdout)
         .trim()
         .to_string())
-}
-
-pub fn make_substitutions(input: &Option<String>, nproc: &str, datadir: &str) -> String {
-    match input {
-        Some(text) => {
-            let temp = text.replace("{cores}", nproc);
-            temp.replace("{datadir}", datadir)
-        }
-        None => "".to_string(),
-    }
 }

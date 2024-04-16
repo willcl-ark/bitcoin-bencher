@@ -6,34 +6,28 @@ use std::process::{Command, Stdio};
 
 use crate::cli::Cli;
 use crate::config::{Benchmark, Config};
-use crate::database::{record_job, record_run};
+use crate::database::Database;
 use crate::result::TimeResult;
-use crate::util;
 
 pub struct Bencher<'a> {
     cli: &'a Cli,
     config: &'a mut Config,
-    db_conn: &'a rusqlite::Connection,
+    db: &'a Database,
 }
 
 impl<'a> Bencher<'a> {
-    pub fn new(cli: &'a Cli, config: &'a mut Config, db_conn: &'a rusqlite::Connection) -> Self {
-        Bencher {
-            cli,
-            config,
-            db_conn,
-        }
+    pub fn new(cli: &'a Cli, config: &'a mut Config, db: &'a Database) -> Self {
+        Bencher { cli, config, db }
     }
 
     pub fn run(&mut self, date: &i64, commit_id: String) -> Result<()> {
-        self.make_subs()?;
-        assert!(std::env::set_current_dir(&self.cli.bitcoin_src_dir).is_ok());
+        assert!(std::env::set_current_dir(&self.cli.src_dir).is_ok());
         info!(
             "Changed working directory to {}",
-            &self.cli.bitcoin_src_dir.display()
+            &self.cli.src_dir.display()
         );
 
-        let run_id = record_run(self.db_conn, *date, commit_id)?;
+        let run_id = self.db.record_run(*date, commit_id)?;
 
         let mut benchmarks = std::mem::take(&mut self.config.benchmarks.list);
         for benchmark in &mut benchmarks {
@@ -41,22 +35,6 @@ impl<'a> Bencher<'a> {
         }
         self.config.benchmarks.list = benchmarks;
 
-        Ok(())
-    }
-
-    fn make_subs(&mut self) -> Result<()> {
-        let nproc = util::get_nproc().unwrap_or_else(|e| {
-            log::error!("{}", e);
-            std::process::exit(exitcode::OSERR);
-        });
-
-        for benchmark in &mut self.config.benchmarks.list {
-            benchmark.args = Some(util::make_substitutions(
-                &benchmark.args,
-                &nproc,
-                &self.cli.test_data_dir.as_ref().unwrap().to_string_lossy(),
-            ));
-        }
         Ok(())
     }
 
@@ -94,7 +72,7 @@ impl<'a> Bencher<'a> {
 
         if let Some(ref outfile_path) = benchmark.outfile {
             let results = TimeResult::from_file(outfile_path)?;
-            record_job(self.db_conn, run_id, results)?;
+            self.db.record_job(run_id, results)?;
         }
         Ok(())
     }
