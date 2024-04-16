@@ -57,13 +57,8 @@ fn main() -> Result<()> {
     });
 
     // Run benchmarks
-    if let Err(e) = bench::run_benchmarks(
-        &cli,
-        &mut config,
-        &cli.date.unwrap(),
-        commit_id,
-        &db_connection,
-    ) {
+    let mut bencher = bench::Bencher::new(&cli, &mut config, &db_connection);
+    if let Err(e) = bencher.run(&cli.date.unwrap(), commit_id) {
         error!("{}", e);
         std::process::exit(exitcode::SOFTWARE);
     };

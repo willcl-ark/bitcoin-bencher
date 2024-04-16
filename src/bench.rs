@@ -1,91 +1,82 @@
-use std::collections::HashMap;
+use anyhow::{bail, Result};
+use log::info;
+
 use std::ffi::OsString;
 use std::process::{Command, Stdio};
 
-use anyhow::{bail, Result};
-use log::{error, info};
-
 use crate::cli::Cli;
-use crate::config::Config;
+use crate::config::{Benchmark, Config};
 use crate::database::{record_job, record_run};
 use crate::result::TimeResult;
 use crate::util;
 
-extern crate exitcode;
-
-fn make_subs(config: &mut Config, cli: &Cli) -> Result<()> {
-    let nproc = util::get_nproc().unwrap_or_else(|e| {
-        error!("{}", e);
-        std::process::exit(exitcode::OSERR);
-    });
-
-    for benchmark in &mut config.benchmarks.list {
-        // Apply substitutions directly to the entire args string
-        benchmark.args = Some(util::make_substitutions(
-            &benchmark.args,
-            &nproc,
-            &cli.test_data_dir.as_ref().unwrap().to_string_lossy(),
-        ));
-    }
-
-    Ok(())
+pub struct Bencher<'a> {
+    cli: &'a Cli,
+    config: &'a mut Config,
+    db_conn: &'a rusqlite::Connection,
 }
 
-pub fn run_benchmarks(
-    cli: &Cli,
-    config: &mut Config,
-    date: &i64,
-    commit_id: String,
-    db_conn: &rusqlite::Connection,
-) -> Result<()> {
-    make_subs(config, cli)?;
+impl<'a> Bencher<'a> {
+    pub fn new(cli: &'a Cli, config: &'a mut Config, db_conn: &'a rusqlite::Connection) -> Self {
+        Bencher {
+            cli,
+            config,
+            db_conn,
+        }
+    }
 
-    assert!(std::env::set_current_dir(&cli.bitcoin_src_dir).is_ok());
-    info!(
-        "Changed working directory to {}",
-        &cli.bitcoin_src_dir.display()
-    );
-
-    let run_id = record_run(db_conn, *date, commit_id)?;
-    // TODO: Monitor with procfs while benchmark is running
-    // Perhaps just use /usr/bin/time -v for now?
-    for benchmark in &mut config.benchmarks.list {
+    pub fn run(&mut self, date: &i64, commit_id: String) -> Result<()> {
+        self.make_subs()?;
+        assert!(std::env::set_current_dir(&self.cli.bitcoin_src_dir).is_ok());
         info!(
-            "Running benchmark: {} using {}",
-            benchmark.name, benchmark.command
+            "Changed working directory to {}",
+            &self.cli.bitcoin_src_dir.display()
         );
-        let mut command = Command::new(benchmark.command.trim());
-        // Set env vars sperately as they need to be OsStrings
-        if let Some(env_vars) = &benchmark.env {
-            let mut envs = HashMap::new();
-            for var in env_vars {
-                if let Some((key, value)) = var.split_once('=') {
-                    envs.insert(OsString::from(key), OsString::from(value));
-                } else {
-                    bail!("Invalid environment variable format: {}", var);
-                }
-            }
-        }
-        let args;
-        if let Some(args_single) = &benchmark.args {
-            args = args_single
-                .split_whitespace()
-                .map(String::from)
-                .collect::<Vec<String>>();
-        } else {
-            bail!("Can't run an empty benchmark!");
-        }
 
+        let run_id = record_run(self.db_conn, *date, commit_id)?;
+
+        let mut benchmarks = std::mem::take(&mut self.config.benchmarks.list);
+        for benchmark in &mut benchmarks {
+            self.run_single_benchmark(benchmark, run_id)?;
+        }
+        self.config.benchmarks.list = benchmarks;
+
+        Ok(())
+    }
+
+    fn make_subs(&mut self) -> Result<()> {
+        let nproc = util::get_nproc().unwrap_or_else(|e| {
+            log::error!("{}", e);
+            std::process::exit(exitcode::OSERR);
+        });
+
+        for benchmark in &mut self.config.benchmarks.list {
+            benchmark.args = Some(util::make_substitutions(
+                &benchmark.args,
+                &nproc,
+                &self.cli.test_data_dir.as_ref().unwrap().to_string_lossy(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn run_single_benchmark(&self, benchmark: &mut Benchmark, run_id: i64) -> Result<()> {
+        let mut command = Command::new(benchmark.command.trim());
         command
-            .args(&config.time.args)
+            .args(&self.config.time.args)
             .args(&benchmark.format)
             .args(&benchmark.outfile)
-            .args(&args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        let child = command.spawn().expect("Failed to start benchmark command");
+        let bench_args = self.process_args(&benchmark.args)?;
+        command.args(&bench_args);
 
+        if let Some(envs) = self.process_env_vars(&benchmark.env) {
+            command.envs(envs);
+        }
+
+        let child = command.spawn().expect("Failed to start benchmark command");
         let output = child
             .wait_with_output()
             .expect("Failed to read benchmark command output");
@@ -101,11 +92,34 @@ pub fn run_benchmarks(
             );
         }
 
-        // Read mean, user and system values out
         if let Some(ref outfile_path) = benchmark.outfile {
             let results = TimeResult::from_file(outfile_path)?;
-            record_job(db_conn, run_id, results)?;
+            record_job(self.db_conn, run_id, results)?;
         }
+        Ok(())
     }
-    Ok(())
+
+    fn process_env_vars(&self, env: &Option<Vec<String>>) -> Option<Vec<(OsString, OsString)>> {
+        env.as_ref().map(|env_vars| {
+            env_vars
+                .iter()
+                .filter_map(|var| {
+                    var.split_once('=')
+                        .map(|(key, value)| (OsString::from(key), OsString::from(value)))
+                })
+                .collect::<Vec<(OsString, OsString)>>()
+        })
+    }
+
+    fn process_args(&self, args: &Option<String>) -> Result<Vec<String>> {
+        args.as_ref().map_or_else(
+            || bail!("Can't run an empty benchmark!"),
+            |args_single| {
+                Ok(args_single
+                    .split_whitespace()
+                    .map(String::from)
+                    .collect::<Vec<String>>())
+            },
+        )
+    }
 }
