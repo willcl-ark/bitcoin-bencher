@@ -6,7 +6,7 @@ use serde::Deserialize;
 #[derive(Deserialize, Debug)]
 pub struct Config {
     pub settings: Settings,
-    pub hyperfine: HyperfineSettings,
+    pub time: TimeSettings,
     pub benchmarks: Benchmarks,
 }
 
@@ -16,7 +16,7 @@ pub struct Settings {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct HyperfineSettings {
+pub struct TimeSettings {
     pub args: Vec<String>,
 }
 #[derive(Deserialize, Debug)]
@@ -28,9 +28,10 @@ pub struct Benchmarks {
 pub struct Benchmark {
     pub name: String,
     pub command: String,
+    pub env: Option<Vec<String>>,
     pub format: Option<String>,
     pub outfile: Option<String>,
-    pub args: Vec<String>,
+    pub args: Option<String>,
 }
 
 pub fn read_config_file() -> Result<Config> {
@@ -41,8 +42,8 @@ pub fn read_config_file() -> Result<Config> {
 
     // Initialize or set default values for optional fields
     for benchmark in &mut config.benchmarks.list {
-        benchmark.format = Some(String::from("--export-json"));
-        benchmark.outfile = Some(format!("{}-results.json", benchmark.name));
+        benchmark.format = Some(String::from("--output"));
+        benchmark.outfile = Some(format!("{}-results.txt", benchmark.name));
     }
 
     Ok(config)

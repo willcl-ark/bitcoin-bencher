@@ -4,6 +4,7 @@ use anyhow::{anyhow, Result};
 use log::info;
 use rusqlite::{params, Connection};
 
+use crate::bench;
 use crate::cli;
 
 fn create_tables(conn: &Connection) -> Result<()> {
@@ -21,26 +22,34 @@ fn create_tables(conn: &Connection) -> Result<()> {
             job_id INTEGER PRIMARY KEY AUTOINCREMENT,
             run_id INTEGER,
             job_name TEXT NOT NULL,
-            mean REAL NOT NULL,
-            user REAL NOT NULL,
-            system REAL NOT NULL,
-            FOREIGN KEY (run_id) REFERENCES Runs(run_id)
+            user_time REAL,
+            system_time REAL,
+            percent_of_cpu INTEGER,
+            elapsed_time REAL NOT NULL,
+            max_resident_set_size_kb INTEGER,
+            major_page_faults INTEGER,
+            minor_page_faults INTEGER,
+            voluntary_context_switches INTEGER,
+            involuntary_context_switches INTEGER,
+            file_system_outputs INTEGER,
+            exit_status INTEGER,
+            FOREIGN KEY (run_id) REFERENCES runs(run_id)
         );",
         params![],
     )?;
 
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS metrics (
-            metric_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            job_id INTEGER,
-            timestamp DATETIME NOT NULL,
-            cpu_usage REAL,
-            ram_usage REAL,
-            other_metrics TEXT,
-            FOREIGN KEY (job_id) REFERENCES Jobs(job_id)
-        );",
-        params![],
-    )?;
+    // conn.execute(
+    //     "CREATE TABLE IF NOT EXISTS metrics (
+    //         metric_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    //         job_id INTEGER,
+    //         timestamp DATETIME NOT NULL,
+    //         cpu_usage REAL,
+    //         ram_usage REAL,
+    //         other_metrics TEXT,
+    //         FOREIGN KEY (job_id) REFERENCES jobs(job_id)
+    //     );",
+    //     params![],
+    // )?;
     info!("All required tables exist in db");
 
     Ok(())
@@ -54,17 +63,10 @@ pub fn record_run(conn: &Connection, date: i64, commit_id: String) -> Result<i64
     Ok(conn.last_insert_rowid())
 }
 
-pub fn record_job(
-    conn: &Connection,
-    run_id: i64,
-    job_name: String,
-    mean: f64,
-    user: f64,
-    system: f64,
-) -> Result<i64> {
+pub fn record_job(conn: &Connection, run_id: i64, stats: bench::TimeResult) -> Result<i64> {
     conn.execute(
-        "INSERT INTO jobs (run_id, job_name, mean, user, system) VALUES (?, ?, ?, ?, ?)",
-        params![run_id, job_name, mean, user, system],
+        "INSERT INTO jobs (run_id, job_name, user_time, system_time, percent_of_cpu, elapsed_time, max_resident_set_size_kb, major_page_faults, minor_page_faults, voluntary_context_switches, file_system_outputs, exit_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        params![run_id, stats.command, stats.user_time_seconds, stats.system_time_seconds, stats.percent_of_cpu, stats.elapsed_time, stats.max_resident_set_size_kb, stats.major_page_faults, stats.minor_page_faults, stats.voluntary_context_switches, stats.file_system_outputs, stats.exit_status],
     )?;
     Ok(conn.last_insert_rowid())
 }

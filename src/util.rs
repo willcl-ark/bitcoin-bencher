@@ -121,7 +121,12 @@ pub fn get_nproc() -> Result<String> {
         .to_string())
 }
 
-pub fn make_substitutions(input: &str, nproc: &str, datadir: &str) -> String {
-    let input = input.replace("{cores}", nproc);
-    input.replace("{datadir}", datadir)
+pub fn make_substitutions(input: &Option<String>, nproc: &str, datadir: &str) -> String {
+    match input {
+        Some(text) => {
+            let temp = text.replace("{cores}", nproc);
+            temp.replace("{datadir}", datadir)
+        }
+        None => "".to_string(),
+    }
 }
