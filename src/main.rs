@@ -12,6 +12,7 @@ mod bench;
 mod cli;
 mod config;
 mod database;
+mod graph;
 mod result;
 mod util;
 
@@ -68,6 +69,8 @@ fn main() -> Result<()> {
         error!("{}", e);
         std::process::exit(exitcode::SOFTWARE);
     };
+
+    // Plot some graphs
 
     std::process::exit(exitcode::OK)
 }
