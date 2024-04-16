@@ -4,8 +4,8 @@ use anyhow::{anyhow, Result};
 use log::info;
 use rusqlite::{params, Connection};
 
-use crate::bench;
 use crate::cli;
+use crate::result::TimeResult;
 
 fn create_tables(conn: &Connection) -> Result<()> {
     conn.execute(
@@ -63,7 +63,7 @@ pub fn record_run(conn: &Connection, date: i64, commit_id: String) -> Result<i64
     Ok(conn.last_insert_rowid())
 }
 
-pub fn record_job(conn: &Connection, run_id: i64, stats: bench::TimeResult) -> Result<i64> {
+pub fn record_job(conn: &Connection, run_id: i64, stats: TimeResult) -> Result<i64> {
     conn.execute(
         "INSERT INTO jobs (run_id, job_name, user_time, system_time, percent_of_cpu, elapsed_time, max_resident_set_size_kb, major_page_faults, minor_page_faults, voluntary_context_switches, file_system_outputs, exit_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         params![run_id, stats.command, stats.user_time_seconds, stats.system_time_seconds, stats.percent_of_cpu, stats.elapsed_time, stats.max_resident_set_size_kb, stats.major_page_faults, stats.minor_page_faults, stats.voluntary_context_switches, stats.file_system_outputs, stats.exit_status],

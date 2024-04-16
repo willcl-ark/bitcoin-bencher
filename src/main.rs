@@ -7,6 +7,7 @@ mod bench;
 mod cli;
 mod config;
 mod database;
+mod result;
 mod util;
 
 fn main() -> Result<()> {
