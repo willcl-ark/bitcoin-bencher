@@ -1,5 +1,5 @@
 use anyhow::{bail, Result};
-use log::info;
+use log::{debug, info};
 
 use std::ffi::OsString;
 use std::process::{Command, Stdio};
@@ -54,6 +54,7 @@ impl<'a> Bencher<'a> {
             command.envs(envs);
         }
 
+        info!("Running benchmark command: {:?}", command);
         let child = command.spawn().expect("Failed to start benchmark command");
         let output = child
             .wait_with_output()

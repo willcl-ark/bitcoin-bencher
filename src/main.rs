@@ -1,10 +1,11 @@
 use anyhow::Result;
 use env_logger::Env;
-use log::error;
+use log::{error, info};
 
 use cli::Cli;
 use config::Config;
 use database::Database;
+use graph::plot_job_metrics;
 
 extern crate exitcode;
 
@@ -27,11 +28,12 @@ fn main() -> Result<()> {
     });
 
     // Load configuration from TOML
-    let mut config = Config::load_from_file(&cli.config_file, &cli.bitcoin_data_dir)
-        .unwrap_or_else(|e| {
-            error!("Error reading config.toml: {}", e);
-            std::process::exit(exitcode::CONFIG);
-        });
+    let mut config =
+        Config::load_from_file(cli.config_file.as_ref().unwrap(), &cli.bitcoin_data_dir)
+            .unwrap_or_else(|e| {
+                error!("Error reading config.toml: {}", e);
+                std::process::exit(exitcode::CONFIG);
+            });
 
     // Check required binaries exist on PATH
     if let Err(e) = util::check_binaries_exist(&config) {
@@ -40,10 +42,11 @@ fn main() -> Result<()> {
     }
 
     // Setup db
-    let database = Database::new(&cli.bench_data_dir, &cli.bench_db_name).unwrap_or_else(|e| {
-        error!("Error getting database: {}", e);
-        std::process::exit(exitcode::CANTCREAT);
-    });
+    let database = Database::new(&cli.bench_data_dir.to_string_lossy(), &cli.bench_db_name)
+        .unwrap_or_else(|e| {
+            error!("Error getting database: {}", e);
+            std::process::exit(exitcode::CANTCREAT);
+        });
 
     // Check source dir appears valid
     let src_dir_path = util::check_source_file(&cli).unwrap_or_else(|e| {
@@ -69,8 +72,10 @@ fn main() -> Result<()> {
         error!("{}", e);
         std::process::exit(exitcode::SOFTWARE);
     };
+    info!("Finished running benchmarks");
 
     // Plot some graphs
+    plot_job_metrics(&database, &cli.bench_data_dir.to_string_lossy())?;
 
     std::process::exit(exitcode::OK)
 }

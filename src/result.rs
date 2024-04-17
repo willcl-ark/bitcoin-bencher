@@ -1,4 +1,5 @@
 use anyhow::{bail, Context, Result};
+use log::debug;
 
 extern crate exitcode;
 
@@ -8,8 +9,8 @@ use std::io::BufRead;
 #[derive(Debug, Default)]
 pub struct TimeResult {
     pub command: String,
-    pub user_time_seconds: f64,
-    pub system_time_seconds: f64,
+    pub user_time: f64,
+    pub system_time: f64,
     pub percent_of_cpu: i32,
     pub elapsed_time: f64,
     pub max_resident_set_size_kb: i64,
@@ -52,9 +53,10 @@ impl TimeResult {
             let value = parts[0].trim();
             let key = parts[1].trim();
             match key {
-                "Command being timed" => self.command = value.to_string(),
-                "User time (seconds)" => self.user_time_seconds = value.parse()?,
-                "System time (seconds)" => self.system_time_seconds = value.parse()?,
+                // This removes quote marks from the time -v output
+                "Command being timed" => self.command = value.to_string().replace('"', ""),
+                "User time (seconds)" => self.user_time = value.parse()?,
+                "System time (seconds)" => self.system_time = value.parse()?,
                 "Percent of CPU this job got" => {
                     self.percent_of_cpu = value.trim_end_matches('%').parse()?
                 }
@@ -74,7 +76,9 @@ impl TimeResult {
                 }
                 "File system outputs" => self.file_system_outputs = value.parse()?,
                 "Exit status" => self.exit_status = value.parse()?,
-                _ => {} // Ignore unknown keys
+                _ => {
+                    debug!("Failed to match key: {} against Result struct", key);
+                }
             }
         }
         Ok(())

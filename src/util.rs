@@ -4,7 +4,7 @@ use std::{
 };
 
 use chrono::prelude::*;
-use log::{info, warn};
+use log::{debug, info, warn};
 use which::which;
 
 use crate::{cli::Cli, config};
@@ -53,6 +53,10 @@ pub fn check_source_file(cli: &Cli) -> Result<PathBuf> {
 pub fn checkout_commit(src_dir_path: &PathBuf, date: &i64) -> Result<String> {
     let date = Utc.timestamp_opt(*date, 0).unwrap();
     let formatted_date = date.format("%Y-%m-%d %H:%M").to_string();
+    debug!(
+        "Checking out commit closest in date to {:?}",
+        formatted_date
+    );
 
     let commit_id_output = Command::new("git")
         .args(["rev-list", "-n", "1", "--before", &formatted_date, "master"])

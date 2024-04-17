@@ -1,6 +1,10 @@
 use anyhow::{Context, Result};
+use log::debug;
 use serde::Deserialize;
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use crate::util;
 
@@ -38,15 +42,11 @@ pub struct Benchmark {
 }
 
 impl Config {
-    pub fn load_from_file(
-        filename: &Option<PathBuf>,
-        bitcoin_data_dir: &Option<PathBuf>,
-    ) -> Result<Self> {
-        let config_contents = fs::read_to_string(filename.clone().unwrap())
-            .with_context(|| format!("Failed to read config file from {:?}", filename.as_ref()))?;
-        let mut config: Config =
-            toml::from_str(&config_contents).context("Failed to parse config from TOML")?;
-        config.settings.bitcoin_data_dir = bitcoin_data_dir.clone();
+    pub fn load_from_file(filename: &Path, bitcoin_data_dir: &Path) -> Result<Self> {
+        let config_contents = fs::read_to_string(filename)?;
+        let mut config: Config = toml::from_str(&config_contents)?;
+        config.settings.bitcoin_data_dir = Some(bitcoin_data_dir.to_path_buf());
+        debug!("Using configuration: {:?}", config);
 
         config.substitute_defaults();
         config.substitute_vars()?;
@@ -70,15 +70,10 @@ impl Config {
 
         for benchmark in &mut self.benchmarks.list {
             if let Some(args) = &mut benchmark.args {
-                let bitcoin_data_dir = self
-                    .settings
-                    .bitcoin_data_dir
-                    .as_ref()
-                    .map(|path| path.to_string_lossy().to_string())
-                    .unwrap();
-
                 *args = args.replace("{cores}", &nproc.to_string());
-                *args = args.replace("{datadir}", &bitcoin_data_dir);
+                if let Some(data_dir) = self.settings.bitcoin_data_dir.as_ref() {
+                    *args = args.replace("{datadir}", &data_dir.to_string_lossy());
+                }
             }
         }
         Ok(())

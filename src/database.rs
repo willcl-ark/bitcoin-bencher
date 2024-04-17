@@ -1,5 +1,5 @@
-use anyhow::{anyhow, Result};
-use log::info;
+use anyhow::{anyhow, Context, Result};
+use log::{debug, info};
 use rusqlite::{params, Connection};
 use std::path::Path;
 
@@ -7,8 +7,8 @@ use crate::result::TimeResult;
 
 #[derive(Debug)]
 pub struct Run {
-    run_id: i32,
-    date: String,
+    pub run_id: i32,
+    date: i64,
     commit_id: String,
 }
 
@@ -16,18 +16,7 @@ pub struct Run {
 pub struct Job {
     pub job_id: i64,
     pub run_id: i64,
-    pub job_name: String,
-    pub user_time: Option<f64>,
-    pub system_time: Option<f64>,
-    pub percent_of_cpu: Option<i32>,
-    pub elapsed_time: f64,
-    pub max_resident_set_size_kb: Option<i32>,
-    pub major_page_faults: Option<i32>,
-    pub minor_page_faults: Option<i32>,
-    pub voluntary_context_switches: Option<i32>,
-    pub involuntary_context_switches: Option<i32>,
-    pub file_system_outputs: Option<i32>,
-    pub exit_status: Option<i32>,
+    pub result: TimeResult,
 }
 
 pub struct Database {
@@ -36,13 +25,13 @@ pub struct Database {
 
 impl Database {
     pub fn new(data_dir: &str, db_name: &str) -> Result<Self> {
-        let data_dir_path = Path::new(data_dir).join("bench_bitcoin");
+        let data_dir_path = Path::new(data_dir);
         info!(
             "Using data directory: {:?} with db name: {:?}",
             data_dir_path, db_name
         );
 
-        std::fs::create_dir_all(&data_dir_path).map_err(|e| {
+        std::fs::create_dir_all(data_dir_path).map_err(|e| {
             anyhow!(
                 "Failed to create data directory '{}': {}",
                 data_dir_path.display(),
@@ -67,11 +56,12 @@ impl Database {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS runs (
                 run_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date DATETIME NOT NULL,
+                date INTEGER NOT NULL,
                 commit_id TEXT NOT NULL
             );",
             params![],
         )?;
+        debug!("runs table exists");
 
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS jobs (
@@ -93,6 +83,7 @@ impl Database {
             );",
             params![],
         )?;
+        debug!("jobs table exists");
 
         info!("All required tables exist in db");
         Ok(())
@@ -103,62 +94,61 @@ impl Database {
             "INSERT INTO runs (date, commit_id) VALUES (?, ?)",
             params![date, commit_id],
         )?;
+        debug!(
+            "Recorded run on date: {:?} with commit_id: {}",
+            date, commit_id
+        );
         Ok(self.conn.last_insert_rowid())
     }
 
-    pub fn record_job(&self, run_id: i64, stats: TimeResult) -> Result<i64> {
+    pub fn record_job(&self, run_id: i64, result: TimeResult) -> Result<i64> {
         self.conn.execute(
-            "INSERT INTO jobs (run_id, job_name, user_time, system_time, percent_of_cpu, elapsed_time, max_resident_set_size_kb, major_page_faults, minor_page_faults, voluntary_context_switches, file_system_outputs, exit_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            params![run_id, stats.command, stats.user_time_seconds, stats.system_time_seconds, stats.percent_of_cpu, stats.elapsed_time, stats.max_resident_set_size_kb, stats.major_page_faults, stats.minor_page_faults, stats.voluntary_context_switches, stats.file_system_outputs, stats.exit_status],
+            "INSERT INTO jobs (run_id, job_name, user_time, system_time, percent_of_cpu, elapsed_time, max_resident_set_size_kb, major_page_faults, minor_page_faults, voluntary_context_switches, involuntary_context_switches, file_system_outputs, exit_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params![run_id, result.command, result.user_time, result.system_time, result.percent_of_cpu, result.elapsed_time, result.max_resident_set_size_kb, result.major_page_faults, result.minor_page_faults, result.voluntary_context_switches, result.involuntary_context_switches, result.file_system_outputs, result.exit_status],
         )?;
+        debug!("Recorded job: {:?}", result);
         Ok(self.conn.last_insert_rowid())
     }
 
-    fn get_all_runs(&self) -> Result<Vec<Run>> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT run_id, date, commit_id FROM runs ORDER BY run_id ASC")?;
-        let run_iter = stmt.query_map([], |row| {
-            Ok(Run {
-                run_id: row.get(0)?,
-                date: row.get(1)?,
-                commit_id: row.get(2)?,
-            })
-        })?;
-
-        let mut runs = Vec::new();
-        for run in run_iter {
-            runs.push(run?);
-        }
-
-        Ok(runs)
+    pub fn get_job_names(&self) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare("SELECT DISTINCT job_name FROM jobs")?;
+        let job_names = stmt
+            .query_map([], |row| row.get(0))
+            .with_context(|| "Failed to map query results")?
+            .map(|result| result.map_err(anyhow::Error::from))
+            .collect::<Result<Vec<String>>>()?;
+        debug!("Got job names: {:?}", job_names);
+        Ok(job_names)
     }
 
-    pub fn get_jobs_by_run_id(&self, run_id: i64) -> Result<Vec<Job>> {
+    pub fn get_jobs_by_name(&self, job_name: &String) -> Result<Vec<Job>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT * FROM jobs WHERE run_id = ? ORDER BY job_id ASC")?;
-        let job_iter = stmt.query_map([run_id], |row| {
+            .prepare("SELECT * FROM jobs WHERE job_name = ? ORDER BY job_id ASC")?;
+        let job_iter = stmt.query_map([job_name], |row| {
             Ok(Job {
                 job_id: row.get(0)?,
                 run_id: row.get(1)?,
-                job_name: row.get(2)?,
-                user_time: row.get(3)?,
-                system_time: row.get(4)?,
-                percent_of_cpu: row.get(5)?,
-                elapsed_time: row.get(6)?,
-                max_resident_set_size_kb: row.get(7)?,
-                major_page_faults: row.get(8)?,
-                minor_page_faults: row.get(9)?,
-                voluntary_context_switches: row.get(10)?,
-                involuntary_context_switches: row.get(11)?,
-                file_system_outputs: row.get(12)?,
-                exit_status: row.get(13)?,
+                result: TimeResult {
+                    command: row.get(2)?,
+                    user_time: row.get(3)?,
+                    system_time: row.get(4)?,
+                    percent_of_cpu: row.get(5)?,
+                    elapsed_time: row.get(6)?,
+                    max_resident_set_size_kb: row.get(7)?,
+                    major_page_faults: row.get(8)?,
+                    minor_page_faults: row.get(9)?,
+                    voluntary_context_switches: row.get(10)?,
+                    involuntary_context_switches: row.get(11)?,
+                    file_system_outputs: row.get(12)?,
+                    exit_status: row.get(13)?,
+                },
             })
         })?;
 
         let mut jobs = Vec::new();
         for job in job_iter {
+            debug!("Got job: {:?}", job);
             jobs.push(job?);
         }
 
