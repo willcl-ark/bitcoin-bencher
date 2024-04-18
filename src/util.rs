@@ -1,13 +1,10 @@
-use std::{
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::{path::PathBuf, process::Command};
 
 use chrono::prelude::*;
 use log::{debug, info, warn};
 use which::which;
 
-use crate::{cli::Cli, config};
+use crate::config;
 extern crate exitcode;
 
 use anyhow::{Context, Result};
@@ -31,10 +28,8 @@ pub fn check_binaries_exist(config: &config::Config) -> Result<()> {
     Ok(())
 }
 
-pub fn check_source_file(cli: &Cli) -> Result<PathBuf> {
-    let src_dir_path = Path::new(&cli.src_dir).join("src");
-    let init_cpp_path = src_dir_path.join("init.cpp");
-
+pub fn check_source_file(src_dir_path: &PathBuf) -> Result<&PathBuf> {
+    let init_cpp_path = src_dir_path.join("src/init.cpp");
     if !init_cpp_path.exists() {
         anyhow::bail!(
             "Expected file init.cpp not found in provided src directory: {}",

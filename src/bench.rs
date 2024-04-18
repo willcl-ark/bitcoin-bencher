@@ -1,31 +1,32 @@
 use anyhow::{bail, Result};
-use log::{debug, info};
+use log::info;
 
 use std::ffi::OsString;
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use crate::cli::Cli;
 use crate::config::{Benchmark, Config};
 use crate::database::Database;
 use crate::result::TimeResult;
 
 pub struct Bencher<'a> {
-    cli: &'a Cli,
     config: &'a mut Config,
     db: &'a Database,
+    src_dir: &'a PathBuf,
 }
 
 impl<'a> Bencher<'a> {
-    pub fn new(cli: &'a Cli, config: &'a mut Config, db: &'a Database) -> Self {
-        Bencher { cli, config, db }
+    pub fn new(config: &'a mut Config, db: &'a Database, src_dir: &'a PathBuf) -> Self {
+        Bencher {
+            config,
+            db,
+            src_dir,
+        }
     }
 
     pub fn run(&mut self, date: &i64, commit_id: String) -> Result<()> {
-        assert!(std::env::set_current_dir(&self.cli.src_dir).is_ok());
-        info!(
-            "Changed working directory to {}",
-            &self.cli.src_dir.display()
-        );
+        assert!(std::env::set_current_dir(self.src_dir).is_ok());
+        info!("Changed working directory to {}", &self.src_dir.display());
 
         let run_id = self.db.record_run(*date, commit_id)?;
 

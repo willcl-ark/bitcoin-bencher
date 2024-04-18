@@ -2,7 +2,7 @@ use anyhow::Result;
 use env_logger::Env;
 use log::{error, info};
 
-use cli::Cli;
+use cli::{BenchCommands, Cli, Commands};
 use config::Config;
 use database::Database;
 use graph::plot_job_metrics;
@@ -48,34 +48,39 @@ fn main() -> Result<()> {
             std::process::exit(exitcode::CANTCREAT);
         });
 
-    // Check source dir appears valid
-    let src_dir_path = util::check_source_file(&cli).unwrap_or_else(|e| {
-        error!("Error checking for source code: {}", e);
-        std::process::exit(exitcode::NOINPUT);
-    });
+    match &cli.command {
+        Some(Commands::Bench(BenchCommands::Run { src_dir })) => {
+            // Check source dir appears valid
+            let src_dir_path = util::check_source_file(src_dir).unwrap_or_else(|e| {
+                error!("Error checking for source code: {}", e);
+                std::process::exit(exitcode::NOINPUT);
+            });
 
-    // Sync the source repository
-    if let Err(e) = util::fetch_repo(&src_dir_path) {
-        error!("Error updating repo: {}", e);
-        std::process::exit(exitcode::SOFTWARE);
-    };
+            // Sync the source repository
+            if let Err(e) = util::fetch_repo(src_dir_path) {
+                error!("Error updating repo: {}", e);
+                std::process::exit(exitcode::SOFTWARE);
+            }
 
-    // Check out code at specified unix time
-    let commit_id = util::checkout_commit(&src_dir_path, &cli.date.unwrap()).unwrap_or_else(|e| {
-        error!("Error checking for source code: {}", e);
-        std::process::exit(exitcode::SOFTWARE);
-    });
+            // Check out code at specified unix time
+            let commit_id =
+                util::checkout_commit(src_dir_path, &cli.date.unwrap()).unwrap_or_else(|e| {
+                    error!("Error checking for source code: {}", e);
+                    std::process::exit(exitcode::SOFTWARE);
+                });
 
-    // Run benchmarks
-    let mut bencher = bench::Bencher::new(&cli, &mut config, &database);
-    if let Err(e) = bencher.run(&cli.date.unwrap(), commit_id) {
-        error!("{}", e);
-        std::process::exit(exitcode::SOFTWARE);
-    };
-    info!("Finished running benchmarks");
-
-    // Plot some graphs
-    plot_job_metrics(&database, &cli.bench_data_dir.to_string_lossy())?;
-
+            // Run benchmarks
+            let mut bencher = bench::Bencher::new(&mut config, &database, src_dir_path);
+            if let Err(e) = bencher.run(&cli.date.unwrap(), commit_id) {
+                error!("{}", e);
+                std::process::exit(exitcode::SOFTWARE);
+            }
+            info!("Finished running benchmarks");
+        }
+        Some(Commands::Graph(_)) => {
+            plot_job_metrics(&database, &cli.bench_data_dir.to_string_lossy())?;
+        }
+        None => {}
+    }
     std::process::exit(exitcode::OK)
 }

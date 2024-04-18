@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::{anyhow, Result};
 use chrono::prelude::*;
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use log::info;
 use tempdir::TempDir;
 
@@ -38,10 +38,6 @@ pub struct Cli {
     #[arg(long, default_value = "db.sqlite")]
     pub bench_db_name: String,
 
-    /// Path to bitcoin source code.
-    #[arg(required = true)]
-    pub src_dir: PathBuf,
-
     /// Data dir to use for bitcoin core during tests.
     /// Randomly created when not supplied.
     #[arg(long, default_value=get_random_bitcoin_dir().into_os_string())]
@@ -52,6 +48,37 @@ pub struct Cli {
     /// Useful for backdating tests (hello Craig!)
     #[arg(long)]
     pub date: Option<i64>,
+
+    /// The subcommands for bitcoin-bench
+    #[clap(subcommand)]
+    pub command: Option<Commands>,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum Commands {
+    /// Handle benchmark-related commands
+    #[command(subcommand)]
+    Bench(BenchCommands),
+
+    /// Handle graph-related commands
+    #[command(subcommand)]
+    Graph(GraphCommands),
+}
+
+#[derive(Debug, Subcommand)]
+pub enum BenchCommands {
+    /// Command to run benchmarks
+    Run {
+        /// Path to bitcoin source code directory
+        #[arg(required = true)]
+        src_dir: PathBuf,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum GraphCommands {
+    /// Command to generate graphs
+    Generate {},
 }
 
 impl Cli {
