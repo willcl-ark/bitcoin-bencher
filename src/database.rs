@@ -24,7 +24,7 @@ pub struct Database {
 }
 
 impl Database {
-    pub fn new(data_dir: &str, db_name: &str) -> Result<Self> {
+    pub fn create_or_load(data_dir: &str, db_name: &str) -> Result<Self> {
         let data_dir_path = Path::new(data_dir);
         info!(
             "Using data directory: {:?} with db name: {:?}",
@@ -103,8 +103,37 @@ impl Database {
 
     pub fn record_job(&self, run_id: i64, result: TimeResult) -> Result<i64> {
         self.conn.execute(
-            "INSERT INTO jobs (run_id, job_name, user_time, system_time, percent_of_cpu, elapsed_time, max_resident_set_size_kb, major_page_faults, minor_page_faults, voluntary_context_switches, involuntary_context_switches, file_system_outputs, exit_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            params![run_id, result.command, result.user_time, result.system_time, result.percent_of_cpu, result.elapsed_time, result.max_resident_set_size_kb, result.major_page_faults, result.minor_page_faults, result.voluntary_context_switches, result.involuntary_context_switches, result.file_system_outputs, result.exit_status],
+            "INSERT INTO jobs (
+                run_id,
+                job_name,
+                user_time,
+                system_time,
+                percent_of_cpu,
+                elapsed_time,
+                max_resident_set_size_kb,
+                major_page_faults,
+                minor_page_faults,
+                voluntary_context_switches,
+                involuntary_context_switches,
+                file_system_outputs,
+                exit_status
+            ) VALUES
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params![
+                run_id,
+                result.command,
+                result.user_time,
+                result.system_time,
+                result.percent_of_cpu,
+                result.elapsed_time,
+                result.max_resident_set_size_kb,
+                result.major_page_faults,
+                result.minor_page_faults,
+                result.voluntary_context_switches,
+                result.involuntary_context_switches,
+                result.file_system_outputs,
+                result.exit_status
+            ],
         )?;
         debug!("Recorded job: {:?}", result);
         Ok(self.conn.last_insert_rowid())

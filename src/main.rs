@@ -42,11 +42,12 @@ fn main() -> Result<()> {
     }
 
     // Setup db
-    let database = Database::new(&cli.bench_data_dir.to_string_lossy(), &cli.bench_db_name)
-        .unwrap_or_else(|e| {
-            error!("Error getting database: {}", e);
-            std::process::exit(exitcode::CANTCREAT);
-        });
+    let database =
+        Database::create_or_load(&cli.bench_data_dir.to_string_lossy(), &cli.bench_db_name)
+            .unwrap_or_else(|e| {
+                error!("Error getting database: {}", e);
+                std::process::exit(exitcode::CANTCREAT);
+            });
 
     match &cli.command {
         Some(Commands::Bench(BenchCommands::Run { src_dir })) => {
