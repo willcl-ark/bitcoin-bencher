@@ -161,15 +161,15 @@ impl Database {
                     user_time: row.get(3)?,
                     system_time: row.get(4)?,
                     percent_of_cpu: row.get(5)?,
-                    max_resident_set_size_kb: row.get(7)?,
-                    major_page_faults: row.get(8)?,
-                    minor_page_faults: row.get(9)?,
-                    voluntary_context_switches: row.get(10)?,
-                    involuntary_context_switches: row.get(11)?,
-                    file_system_outputs: row.get(12)?,
-                    exit_status: row.get(13)?,
+                    max_resident_set_size_kb: row.get(6)?,
+                    major_page_faults: row.get(7)?,
+                    minor_page_faults: row.get(8)?,
+                    voluntary_context_switches: row.get(9)?,
+                    involuntary_context_switches: row.get(10)?,
+                    file_system_outputs: row.get(11)?,
+                    exit_status: row.get(12)?,
                 },
-                commit_id: row.get(14)?,
+                commit_id: row.get(13)?,
             })
         })?;
 
