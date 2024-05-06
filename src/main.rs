@@ -68,6 +68,7 @@ fn main() -> Result<()> {
 
             // Get commit_id to check out
             let commit_id: String;
+            let now = chrono::Utc::now().timestamp();
             if let Some(commit) = cli.commit_id.clone() {
                 commit_id = commit;
             } else {
@@ -75,9 +76,7 @@ fn main() -> Result<()> {
                     // If date is provided, use it
                     date
                 } else {
-                    let today = chrono::Utc::now().timestamp();
-                    cli.date = Some(today);
-                    today
+                    now
                 };
 
                 // Fetch the commit_id from date
@@ -101,7 +100,7 @@ fn main() -> Result<()> {
 
             // Run benchmarks
             let mut bencher = bench::Bencher::new(&mut config, &database, src_dir_path);
-            if let Err(e) = bencher.run(&cli.date.unwrap(), cli.commit_id.unwrap()) {
+            if let Err(e) = bencher.run(&now, commit_id) {
                 error!("{}", e);
                 std::process::exit(exitcode::SOFTWARE);
             }
