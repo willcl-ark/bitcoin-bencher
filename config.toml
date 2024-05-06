@@ -9,7 +9,7 @@ list = [
     { name = "autogen",          command = "/usr/bin/time", args = "./autogen.sh" },
     { name = "configure",        command = "/usr/bin/time", env = ["CC=clang-15", "CXX=clang++-15"], args = "./configure" },
     { name = "make",             command = "/usr/bin/time", args = "make -j{cores}" },
-    # { name = "unit-tests",       command = "/usr/bin/time", args = "make check -j{cores}" },
-    # { name = "functional-tests", command = "/usr/bin/time", args = "test/functional/test_runner.py --cachedir=/mnt/tmp/cache --tmpdir=/mnt/tmp" },
-    # { name = "IBD",              command = "hyperfine", args = ["./src/bitcoind -datadir={datadir} -connect=127.0.0.1:8333, stopatheight=800000 port=8444 rpcport=8445 dbcache=16384"] }
+    { name = "unit-tests",       command = "/usr/bin/time", args = "make check -j{cores}" },
+    { name = "functional-tests", command = "/usr/bin/time", args = "test/functional/test_runner.py --cachedir=/mnt/tmp/cache --tmpdir=/mnt/tmp" },
+    { name = "IBD",              command = "/usr/bin/time", args = "./src/bitcoind -datadir={datadir} -connect=127.0.0.1:8333 -stopatheight=800000 -port=8444 -rpcport=8445 -dbcache=16384" }
 ]
