@@ -17,6 +17,7 @@ pub struct Job {
     pub job_id: i64,
     pub run_id: i64,
     pub result: TimeResult,
+    pub commit_id: String,
 }
 
 pub struct Database {
@@ -152,8 +153,8 @@ impl Database {
 
     pub fn get_jobs_by_name(&self, job_name: &String) -> Result<Vec<Job>> {
         let mut stmt = self
-            .conn
-            .prepare("SELECT * FROM jobs WHERE job_name = ? ORDER BY job_id ASC")?;
+        .conn
+        .prepare("SELECT jobs.*, runs.commit_id FROM jobs INNER JOIN runs ON jobs.run_id = runs.run_id WHERE job_name = ? ORDER BY jobs.run_id ASC")?;
         let job_iter = stmt.query_map([job_name], |row| {
             Ok(Job {
                 job_id: row.get(0)?,
@@ -172,6 +173,7 @@ impl Database {
                     file_system_outputs: row.get(12)?,
                     exit_status: row.get(13)?,
                 },
+                commit_id: row.get(14)?,
             })
         })?;
 
