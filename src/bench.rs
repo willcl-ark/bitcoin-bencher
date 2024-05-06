@@ -40,35 +40,40 @@ impl<'a> Bencher<'a> {
     }
 
     fn run_single_benchmark(&self, benchmark: &mut Benchmark, run_id: i64) -> Result<()> {
+        let output_file = std::fs::File::create("output.log")?;
+        let error_file = std::fs::File::create("error.log")?;
+
         let mut command = Command::new(benchmark.command.trim());
         command
             .args(&self.config.time.args)
             .args(&benchmark.format)
             .args(&benchmark.outfile)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+            .stdout(Stdio::from(output_file))
+            .stderr(Stdio::from(error_file));
 
         let bench_args = self.process_args(&benchmark.args)?;
         command.args(&bench_args);
 
+        // Set environment variables if any
         if let Some(envs) = self.process_env_vars(&benchmark.env) {
             command.envs(envs);
         }
 
         info!("Running benchmark command: {:?}", command);
-        let child = command.spawn().expect("Failed to start benchmark command");
-        let output = child
-            .wait_with_output()
-            .expect("Failed to read benchmark command output");
+        let mut child = command.spawn().expect("Failed to start benchmark command");
+        let status = child
+            .wait()
+            .expect("Failed to wait for benchmark command to complete");
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            bail!("Benchmark {} failed: {}", benchmark.name, stderr);
+        if !status.success() {
+            bail!(
+                "Benchmark {} failed, see 'error.log' for details",
+                benchmark.name
+            );
         } else {
-            let stdout = String::from_utf8_lossy(&output.stdout);
             info!(
-                "Benchmark {} completed successfully: {}",
-                benchmark.name, stdout
+                "Benchmark {} completed successfully, see 'output.log' for details",
+                benchmark.name
             );
         }
 
@@ -76,6 +81,7 @@ impl<'a> Bencher<'a> {
             let results = TimeResult::from_file(outfile_path)?;
             self.db.record_job(run_id, results)?;
         }
+
         Ok(())
     }
 

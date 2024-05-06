@@ -63,6 +63,9 @@ fn main() -> Result<()> {
                 std::process::exit(exitcode::SOFTWARE);
             }
 
+            // TODO: Clean source repo!
+            // git clean -dfx or at least make distclean
+
             // Get commit_id to check out
             let commit_id: String;
             if let Some(commit) = cli.commit_id.clone() {
