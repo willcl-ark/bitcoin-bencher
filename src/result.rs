@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use log::debug;
 
 extern crate exitcode;
@@ -12,7 +12,6 @@ pub struct TimeResult {
     pub user_time: f64,
     pub system_time: f64,
     pub percent_of_cpu: i32,
-    pub elapsed_time: f64,
     pub max_resident_set_size_kb: i64,
     pub major_page_faults: i64,
     pub minor_page_faults: i64,
@@ -23,30 +22,6 @@ pub struct TimeResult {
 }
 
 impl TimeResult {
-    fn parse_time_to_seconds(input: &str) -> Result<f64> {
-        let parts: Vec<&str> = input.split(':').collect();
-        let (hours, minutes, seconds_parts) = match parts.len() {
-            2 => (
-                0,
-                parts[0].parse::<i32>()?,
-                parts[1].split('.').collect::<Vec<&str>>(),
-            ),
-            3 => (
-                parts[0].parse::<i32>()?,
-                parts[1].parse::<i32>()?,
-                parts[2].split('.').collect::<Vec<&str>>(),
-            ),
-            _ => bail!("Invalid time format. Expected HH:MM:SS.ss or MM:SS.ss"),
-        };
-
-        if seconds_parts.len() != 2 {
-            bail!("Invalid seconds format. Expected SS.ss");
-        }
-        let seconds: i32 = seconds_parts[0].parse()?;
-        let fractional: f64 = format!("0.{}", seconds_parts[1]).parse()?;
-        Ok(hours as f64 * 3600.0 + minutes as f64 * 60.0 + seconds as f64 + fractional)
-    }
-
     fn parse_line(&mut self, line: &str) -> Result<()> {
         let parts: Vec<&str> = line.rsplitn(2, ": ").collect();
         if parts.len() == 2 {
@@ -59,9 +34,6 @@ impl TimeResult {
                 "System time (seconds)" => self.system_time = value.parse()?,
                 "Percent of CPU this job got" => {
                     self.percent_of_cpu = value.trim_end_matches('%').parse()?
-                }
-                "Elapsed (wall clock) time (h:mm:ss or m:ss)" => {
-                    self.elapsed_time = Self::parse_time_to_seconds(value)?
                 }
                 "Maximum resident set size (kbytes)" => {
                     self.max_resident_set_size_kb = value.parse()?

@@ -24,11 +24,11 @@ pub fn plot_job_metrics(db: &Database, output_path: &str) -> Result<()> {
             let commit_group = elapsed_times_by_commit
                 .entry(job.commit_id.clone())
                 .or_default();
-            commit_group.push((index, job.result.elapsed_time));
+            commit_group.push((index, job.result.user_time));
         }
 
         // Plot for each commit_id
-        for (commit_id, elapsed_times) in &elapsed_times_by_commit {
+        for (commit_id, user_time) in &elapsed_times_by_commit {
             let file_path = format!(
                 "{}/{}_{}.png",
                 output_path,
@@ -39,15 +39,12 @@ pub fn plot_job_metrics(db: &Database, output_path: &str) -> Result<()> {
             let root = BitMapBackend::new(&file_path, (1920, 1080)).into_drawing_area();
             root.fill(&WHITE)?;
 
-            let max_x = elapsed_times.len() - 1;
-            let max_y = elapsed_times
-                .iter()
-                .map(|&(_, time)| time)
-                .fold(0.0, f64::max);
+            let max_x = user_time.len() - 1;
+            let max_y = user_time.iter().map(|&(_, time)| time).fold(0.0, f64::max);
 
             let mut chart = ChartBuilder::on(&root)
                 .caption(
-                    format!("Elapsed Time for {} [Commit: {}]", job_name, commit_id),
+                    format!("User Time for {} [Commit: {}]", job_name, commit_id),
                     ("sans-serif", 50),
                 )
                 .x_label_area_size(50)
@@ -58,13 +55,13 @@ pub fn plot_job_metrics(db: &Database, output_path: &str) -> Result<()> {
             chart
                 .configure_mesh()
                 .x_desc("Run Index")
-                .y_desc("Elapsed Time (s)")
+                .y_desc("User Time (s)")
                 .axis_desc_style(("sans-serif", 30))
                 .draw()?;
 
             chart
-                .draw_series(LineSeries::new(elapsed_times.to_vec(), &RED))?
-                .label("Elapsed Time")
+                .draw_series(LineSeries::new(user_time.to_vec(), &RED))?
+                .label("User Time")
                 .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED));
 
             chart
