@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use anyhow::{anyhow, Result};
-use chrono::prelude::*;
 use clap::{Parser, Subcommand};
 use log::info;
 use tempdir::TempDir;
@@ -48,6 +47,11 @@ pub struct Cli {
     /// Useful for backdating tests (hello Craig!)
     #[arg(long)]
     pub date: Option<i64>,
+
+    /// Commit hash to run tests at.
+    /// Will check out git repo at this hash
+    #[arg(long)]
+    pub commit_id: Option<String>,
 
     /// The subcommands for bitcoin-bench
     #[clap(subcommand)]
@@ -98,9 +102,6 @@ impl Cli {
             "Bitcoin datadir set to: {}",
             cli.bitcoin_data_dir.to_string_lossy()
         );
-        if cli.date.is_none() {
-            cli.date = Some(Utc::now().timestamp());
-        }
         Ok(cli)
     }
 }

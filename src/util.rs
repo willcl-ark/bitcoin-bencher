@@ -45,7 +45,7 @@ pub fn check_source_file(src_dir_path: &PathBuf) -> Result<&PathBuf> {
     Ok(src_dir_path)
 }
 
-pub fn checkout_commit(src_dir_path: &PathBuf, date: &i64) -> Result<String> {
+pub fn get_commit_id_from_date(src_dir_path: &PathBuf, date: &i64) -> Result<String> {
     let date = Utc.timestamp_opt(*date, 0).unwrap();
     let formatted_date = date.format("%Y-%m-%d %H:%M").to_string();
     debug!(
@@ -68,6 +68,10 @@ pub fn checkout_commit(src_dir_path: &PathBuf, date: &i64) -> Result<String> {
         .trim()
         .to_string();
 
+    Ok(commit_id)
+}
+
+pub fn checkout_commit(src_dir_path: &PathBuf, commit_id: &str) -> Result<()> {
     let checkout_output = Command::new("git")
         .args(["checkout", &commit_id, "--detach"])
         .current_dir(src_dir_path)
@@ -80,7 +84,7 @@ pub fn checkout_commit(src_dir_path: &PathBuf, date: &i64) -> Result<String> {
     }
 
     info!("Successfully checked out commit {}", commit_id);
-    Ok(commit_id)
+    Ok(())
 }
 
 pub fn fetch_repo(src_dir_path: &PathBuf) -> Result<()> {

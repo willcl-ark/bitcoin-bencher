@@ -22,7 +22,7 @@ fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     // Parse CLI args
-    let cli = Cli::init().unwrap_or_else(|e| {
+    let mut cli = Cli::init().unwrap_or_else(|e| {
         error!("Error initialising cli: {}", e);
         std::process::exit(exitcode::CONFIG);
     });
@@ -63,16 +63,42 @@ fn main() -> Result<()> {
                 std::process::exit(exitcode::SOFTWARE);
             }
 
-            // Check out code at specified unix time
-            let commit_id =
-                util::checkout_commit(src_dir_path, &cli.date.unwrap()).unwrap_or_else(|e| {
-                    error!("Error checking for source code: {}", e);
-                    std::process::exit(exitcode::SOFTWARE);
-                });
+            // Get commit_id to check out
+            let commit_id: String;
+            if let Some(commit) = cli.commit_id.clone() {
+                commit_id = commit;
+            } else {
+                let date_to_use = if let Some(date) = cli.date {
+                    // If date is provided, use it
+                    date
+                } else {
+                    let today = chrono::Utc::now().timestamp();
+                    cli.date = Some(today);
+                    today
+                };
+
+                // Fetch the commit_id from date
+                match util::get_commit_id_from_date(src_dir, &date_to_use) {
+                    Ok(fetched_commit_id) => {
+                        cli.commit_id = Some(fetched_commit_id.clone());
+                        commit_id = fetched_commit_id;
+                    }
+                    Err(e) => {
+                        eprintln!("Error fetching commit ID: {:?}", e);
+                        std::process::exit(exitcode::USAGE);
+                    }
+                }
+            }
+
+            // Check out commit
+            util::checkout_commit(src_dir_path, &commit_id).unwrap_or_else(|e| {
+                error!("Error checking for source code: {}", e);
+                std::process::exit(exitcode::SOFTWARE);
+            });
 
             // Run benchmarks
             let mut bencher = bench::Bencher::new(&mut config, &database, src_dir_path);
-            if let Err(e) = bencher.run(&cli.date.unwrap(), commit_id) {
+            if let Err(e) = bencher.run(&cli.date.unwrap(), cli.commit_id.unwrap()) {
                 error!("{}", e);
                 std::process::exit(exitcode::SOFTWARE);
             }
