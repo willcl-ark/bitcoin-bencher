@@ -1,15 +1,14 @@
 [settings]
 binaries = ["bitcoind", "git", "/usr/bin/time"]
 
-[time]
-args = ["-v"]
-
-[benchmarks]
-list = [
-    { name = "autogen",          command = "/usr/bin/time", args = "./autogen.sh" },
-    { name = "configure",        command = "/usr/bin/time", env = ["CC=clang-15", "CXX=clang++-15"], args = "./configure" },
-    { name = "make",             command = "/usr/bin/time", args = "make -j{cores}" },
-    { name = "unit-tests",       command = "/usr/bin/time", args = "make check -j{cores}" },
-    { name = "functional-tests", command = "/usr/bin/time", args = "test/functional/test_runner.py --cachedir=/mnt/tmp/cache --tmpdir=/mnt/tmp" },
-    { name = "IBD",              command = "/usr/bin/time", args = "./src/bitcoind -datadir={datadir} -connect=127.0.0.1:8333 -stopatheight=800000 -port=8444 -rpcport=8445 -dbcache=16384" }
+[jobs]
+# Run untimed jobs using `bench=false`
+jobs = [
+    { name = "autogen",          command = "./autogen.sh" },
+    { name = "configure",        command = "./configure", env = ["CC=clang-15", "CXX=clang++-15"]},
+    { name = "make-clean",       command = "make -j{cores}", bench = false },
+    { name = "make",             command = "make -j{cores}" },
+    { name = "unit-tests",       command = "make check -j{cores}" },
+    { name = "functional-tests", command = "test/functional/test_runner.py --cachedir=/mnt/tmp/cache --tmpdir=/mnt/tmp" },
+    { name = "IBD",              command = "./src/bitcoind -datadir={datadir} -connect=127.0.0.1:8333 -stopatheight=800000 -port=8444 -rpcport=8445 -dbcache=16384" }
 ]

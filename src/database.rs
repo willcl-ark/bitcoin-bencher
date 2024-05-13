@@ -8,8 +8,8 @@ use crate::result::TimeResult;
 #[derive(Debug)]
 pub struct Run {
     pub run_id: i32,
-    date: i64,
-    commit_id: String,
+    // date: i64,
+    // commit_id: String,
 }
 
 #[derive(Debug)]

@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use log::debug;
 use serde::Deserialize;
 use std::{
@@ -11,8 +11,7 @@ use crate::util;
 #[derive(Deserialize, Debug)]
 pub struct Config {
     pub settings: Settings,
-    pub time: TimeSettings,
-    pub benchmarks: Benchmarks,
+    pub jobs: Jobs,
 }
 
 #[derive(Deserialize, Debug)]
@@ -21,24 +20,23 @@ pub struct Settings {
     pub bitcoin_data_dir: Option<PathBuf>,
 }
 
-#[derive(Deserialize, Debug)]
-pub struct TimeSettings {
-    pub args: Vec<String>,
+#[derive(Deserialize, Debug, Default)]
+pub struct Jobs {
+    pub jobs: Vec<Job>,
+}
+
+fn default_bench() -> bool {
+    true
 }
 
 #[derive(Deserialize, Debug)]
-pub struct Benchmarks {
-    pub list: Vec<Benchmark>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct Benchmark {
+pub struct Job {
     pub name: String,
-    pub command: String,
     pub env: Option<Vec<String>>,
-    pub format: Option<String>,
+    pub command: String,
+    #[serde(default = "default_bench")]
+    pub bench: bool,
     pub outfile: Option<String>,
-    pub args: Option<String>,
 }
 
 impl Config {
@@ -55,27 +53,30 @@ impl Config {
     }
 
     fn substitute_defaults(&mut self) {
-        for benchmark in &mut self.benchmarks.list {
-            benchmark
-                .format
-                .get_or_insert_with(|| "--output".to_string());
-            benchmark
-                .outfile
-                .get_or_insert_with(|| format!("{}-results.txt", benchmark.name));
+        for job in &mut self.jobs.jobs {
+            job.outfile
+                .get_or_insert_with(|| format!("{}-results.txt", job.name));
         }
     }
 
     fn substitute_vars(&mut self) -> Result<()> {
         let nproc = util::get_nproc().context("Failed to get number of processors")?;
 
-        for benchmark in &mut self.benchmarks.list {
-            if let Some(args) = &mut benchmark.args {
-                *args = args.replace("{cores}", &nproc.to_string());
-                if let Some(data_dir) = self.settings.bitcoin_data_dir.as_ref() {
-                    *args = args.replace("{datadir}", &data_dir.to_string_lossy());
+        for job in &mut self.jobs.jobs {
+            if let Some(bitcoin_data_dir) = &self.settings.bitcoin_data_dir {
+                if let Some(bitcoin_data_dir_str) = bitcoin_data_dir.to_str() {
+                    job.command = job.command.replace("{cores}", &nproc.to_string());
+                    job.command = job
+                        .command
+                        .replace("{bitcoin_data_dir}", bitcoin_data_dir_str);
+                } else {
+                    bail!("Failed to convert bitcoin_data_dir to string");
                 }
+            } else {
+                bail!("bitcoin_data_dir is not set");
             }
         }
+
         Ok(())
     }
 }
