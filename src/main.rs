@@ -28,12 +28,10 @@ fn main() -> Result<()> {
     });
 
     // Load configuration from TOML
-    let mut config =
-        Config::load_from_file(cli.config_file.as_ref().unwrap(), &cli.bitcoin_data_dir)
-            .unwrap_or_else(|e| {
-                error!("Error reading config.toml: {}", e);
-                std::process::exit(exitcode::CONFIG);
-            });
+    let mut config = Config::load_from_file(&cli, &cli.bitcoin_data_dir).unwrap_or_else(|e| {
+        error!("Error reading config.toml: {}", e);
+        std::process::exit(exitcode::CONFIG);
+    });
 
     // Check required binaries exist on PATH
     if let Err(e) = util::check_binaries_exist(&config) {
