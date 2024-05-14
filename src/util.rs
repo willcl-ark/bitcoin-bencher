@@ -1,6 +1,7 @@
 use std::{
     path::PathBuf,
     process::{Command, Stdio},
+    time::{Duration, UNIX_EPOCH},
 };
 
 use chrono::prelude::*;
@@ -101,6 +102,16 @@ pub fn get_commit_date(repo_path: &PathBuf, commit_id: &str) -> Result<i64> {
         .context("Failed to parse commit date as i64")?;
 
     Ok(commit_timestamp)
+}
+
+pub fn unix_timestamp_to_hr(timestamp: i64) -> String {
+    // Convert the timestamp to a SystemTime
+    let duration_since_epoch = Duration::from_secs(timestamp as u64);
+    let datetime = UNIX_EPOCH + duration_since_epoch;
+
+    // Format the SystemTime to a human-readable date
+    let datetime: chrono::DateTime<chrono::Utc> = datetime.into();
+    datetime.format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
 pub fn checkout_commit(src_dir_path: &PathBuf, commit_id: &str) -> Result<()> {

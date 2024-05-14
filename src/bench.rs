@@ -1,5 +1,5 @@
 use anyhow::{bail, Result};
-use log::{error, info};
+use log::{debug, error, info};
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -79,6 +79,11 @@ impl<'a> Bencher<'a> {
             error!("Error checking out commit: {}", e);
             std::process::exit(exitcode::SOFTWARE);
         });
+        debug!(
+            "Using date: {:?}, and commit_id: {}",
+            util::unix_timestamp_to_hr(date_to_use),
+            commit_id
+        );
 
         // Return the date and commit ID
         Ok((date_to_use, commit_id))
