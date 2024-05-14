@@ -1,5 +1,5 @@
 use anyhow::{bail, Result};
-use log::info;
+use log::{error, info};
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -7,24 +7,86 @@ use std::process::{Command, Stdio};
 use crate::config::{Config, Job};
 use crate::database::Database;
 use crate::result::TimeResult;
+use crate::util;
 
 pub struct Bencher<'a> {
     config: &'a mut Config,
     db: &'a Database,
     src_dir: &'a PathBuf,
+    commit: &'a Option<String>,
+    date: &'a Option<i64>,
 }
 
 impl<'a> Bencher<'a> {
-    pub fn new(config: &'a mut Config, db: &'a Database, src_dir: &'a PathBuf) -> Self {
+    pub fn new(
+        config: &'a mut Config,
+        db: &'a Database,
+        src_dir: &'a PathBuf,
+        commit: &'a Option<String>,
+        date: &'a Option<i64>,
+    ) -> Self {
         Bencher {
             config,
             db,
             src_dir,
+            commit,
+            date,
         }
     }
 
-    pub fn run(&mut self, date: &i64, commit_id: String) -> Result<()> {
-        let run_id = self.db.record_run(*date, commit_id)?;
+    fn setup(&self) -> Result<(i64, String)> {
+        // Check source dir appears valid
+        let src_dir_path = util::check_source_file(self.src_dir).unwrap_or_else(|e| {
+            error!("Error checking for source code: {}", e);
+            std::process::exit(exitcode::NOINPUT);
+        });
+
+        // Sync the source repository
+        if let Err(e) = util::fetch_repo(src_dir_path) {
+            error!("Error updating repo: {}", e);
+            std::process::exit(exitcode::SOFTWARE);
+        }
+
+        // Determine the commit_id and date to use
+        let (commit_id, date_to_use): (String, i64) = if let Some(c) = &self.commit {
+            // If we have a commit ID, we use it and fetch the date
+            let commit_date = util::get_commit_date(self.src_dir, c).unwrap_or_else(|e| {
+                error!("Error fetching commit date: {}", e);
+                std::process::exit(exitcode::USAGE);
+            });
+            (c.clone(), commit_date)
+        } else if let Some(date) = self.date {
+            // If we have a date, we use it to fetch the commit ID
+            let fetched_commit_id = util::get_commit_id_from_date(self.src_dir, date)
+                .unwrap_or_else(|e| {
+                    error!("Error fetching commit ID: {}", e);
+                    std::process::exit(exitcode::USAGE);
+                });
+            (fetched_commit_id, *date)
+        } else {
+            // If neither is provided, use the current time
+            let now = chrono::Utc::now().timestamp();
+            let fetched_commit_id = util::get_commit_id_from_date(self.src_dir, &now)
+                .unwrap_or_else(|e| {
+                    error!("Error fetching commit ID: {}", e);
+                    std::process::exit(exitcode::USAGE);
+                });
+            (fetched_commit_id, now)
+        };
+
+        // Check out the commit
+        util::checkout_commit(src_dir_path, &commit_id).unwrap_or_else(|e| {
+            error!("Error checking out commit: {}", e);
+            std::process::exit(exitcode::SOFTWARE);
+        });
+
+        // Return the date and commit ID
+        Ok((date_to_use, commit_id))
+    }
+
+    pub fn run(&mut self) -> Result<()> {
+        let (date, commit_id) = self.setup()?;
+        let run_id = self.db.record_run(date, commit_id)?;
         let jobs = std::mem::take(&mut self.config.jobs);
 
         std::env::set_current_dir(self.src_dir)

@@ -54,52 +54,9 @@ fn main() -> Result<()> {
             commit,
             date,
         })) => {
-            // Check source dir appears valid
-            let src_dir_path = util::check_source_file(src_dir).unwrap_or_else(|e| {
-                error!("Error checking for source code: {}", e);
-                std::process::exit(exitcode::NOINPUT);
-            });
-
-            // Sync the source repository
-            if let Err(e) = util::fetch_repo(src_dir_path) {
-                error!("Error updating repo: {}", e);
-                std::process::exit(exitcode::SOFTWARE);
-            }
-
-            // Get commit_id to check out
-            let commit_id: String;
-            let now = chrono::Utc::now().timestamp();
-            if let Some(c) = commit {
-                commit_id = c.clone();
-            } else {
-                let date_to_use = if let Some(date) = date {
-                    // If date is provided, use it
-                    *date
-                } else {
-                    now
-                };
-
-                // Fetch the commit_id from date
-                match util::get_commit_id_from_date(src_dir, &date_to_use) {
-                    Ok(fetched_commit_id) => {
-                        commit_id = fetched_commit_id.clone();
-                    }
-                    Err(e) => {
-                        eprintln!("Error fetching commit ID: {:?}", e);
-                        std::process::exit(exitcode::USAGE);
-                    }
-                }
-            }
-
-            // Check out commit
-            util::checkout_commit(src_dir_path, &commit_id).unwrap_or_else(|e| {
-                error!("Error checking for source code: {}", e);
-                std::process::exit(exitcode::SOFTWARE);
-            });
-
             // Run benchmarks
-            let mut bencher = bench::Bencher::new(&mut config, &database, src_dir_path);
-            if let Err(e) = bencher.run(&now, commit_id) {
+            let mut bencher = bench::Bencher::new(&mut config, &database, src_dir, commit, date);
+            if let Err(e) = bencher.run() {
                 error!("{}", e);
                 std::process::exit(exitcode::SOFTWARE);
             }

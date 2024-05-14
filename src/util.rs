@@ -1,4 +1,7 @@
-use std::{path::PathBuf, process::Command};
+use std::{
+    path::PathBuf,
+    process::{Command, Stdio},
+};
 
 use chrono::prelude::*;
 use log::{debug, info, warn};
@@ -7,7 +10,7 @@ use which::which;
 use crate::config;
 extern crate exitcode;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 
 pub fn check_binaries_exist(config: &config::Config) -> Result<()> {
     // Check required binaries exist on PATH
@@ -69,6 +72,35 @@ pub fn get_commit_id_from_date(src_dir_path: &PathBuf, date: &i64) -> Result<Str
         .to_string();
 
     Ok(commit_id)
+}
+
+pub fn get_commit_date(repo_path: &PathBuf, commit_id: &str) -> Result<i64> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repo_path)
+        .arg("show")
+        .arg("-s")
+        .arg("--format=%ct")
+        .arg(commit_id)
+        .stdout(Stdio::piped())
+        .output()
+        .with_context(|| format!("Failed to execute git command for commit ID: {}", commit_id))?;
+
+    if !output.status.success() {
+        bail!(
+            "Git command failed with status: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let output_str = String::from_utf8(output.stdout)
+        .context("Failed to convert git command output to string")?;
+    let commit_timestamp = output_str
+        .trim()
+        .parse::<i64>()
+        .context("Failed to parse commit date as i64")?;
+
+    Ok(commit_timestamp)
 }
 
 pub fn checkout_commit(src_dir_path: &PathBuf, commit_id: &str) -> Result<()> {
