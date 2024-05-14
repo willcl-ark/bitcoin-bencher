@@ -22,6 +22,9 @@ fn get_random_bitcoin_dir() -> PathBuf {
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct Cli {
+    #[arg(long, hide = true)]
+    pub markdown_help: bool,
+
     /// Path to bitcoin-bench config file (toml)
     #[arg(long)]
     pub config_file: Option<PathBuf>,

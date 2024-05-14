@@ -32,6 +32,11 @@ fn main() -> Result<()> {
         std::process::exit(exitcode::CONFIG);
     });
 
+    if cli.markdown_help {
+        clap_markdown::print_help_markdown::<Cli>();
+        std::process::exit(exitcode::OK);
+    }
+
     // Load configuration from TOML
     let mut config = Config::load_from_file(&cli, &cli.bitcoin_data_dir).unwrap_or_else(|e| {
         error!("Error reading config.toml: {}", e);

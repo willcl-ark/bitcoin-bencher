@@ -117,6 +117,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "clap-markdown",
  "dirs",
  "env_logger",
  "exitcode",
@@ -195,6 +196,15 @@ checksum = "90bc066a67923782aa8515dbaea16946c5bcc5addbd668bb80af688e53e548a0"
 dependencies = [
  "clap_builder",
  "clap_derive",
+]
+
+[[package]]
+name = "clap-markdown"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "325f50228f76921784b6d9f2d62de6778d834483248eefecd27279174797e579"
+dependencies = [
+ "clap",
 ]
 
 [[package]]
