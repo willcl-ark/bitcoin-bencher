@@ -22,7 +22,7 @@ fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     // Parse CLI args
-    let mut cli = Cli::init().unwrap_or_else(|e| {
+    let cli = Cli::init().unwrap_or_else(|e| {
         error!("Error initialising cli: {}", e);
         std::process::exit(exitcode::CONFIG);
     });
@@ -47,8 +47,13 @@ fn main() -> Result<()> {
                 std::process::exit(exitcode::CANTCREAT);
             });
 
+    // Handle CLI commands
     match &cli.command {
-        Some(Commands::Bench(BenchCommands::Run { src_dir })) => {
+        Some(Commands::Bench(BenchCommands::Run {
+            src_dir,
+            commit,
+            date,
+        })) => {
             // Check source dir appears valid
             let src_dir_path = util::check_source_file(src_dir).unwrap_or_else(|e| {
                 error!("Error checking for source code: {}", e);
@@ -64,12 +69,12 @@ fn main() -> Result<()> {
             // Get commit_id to check out
             let commit_id: String;
             let now = chrono::Utc::now().timestamp();
-            if let Some(commit) = cli.commit_id.clone() {
-                commit_id = commit;
+            if let Some(c) = commit {
+                commit_id = c.clone();
             } else {
-                let date_to_use = if let Some(date) = cli.date {
+                let date_to_use = if let Some(date) = date {
                     // If date is provided, use it
-                    date
+                    *date
                 } else {
                     now
                 };
@@ -77,8 +82,7 @@ fn main() -> Result<()> {
                 // Fetch the commit_id from date
                 match util::get_commit_id_from_date(src_dir, &date_to_use) {
                     Ok(fetched_commit_id) => {
-                        cli.commit_id = Some(fetched_commit_id.clone());
-                        commit_id = fetched_commit_id;
+                        commit_id = fetched_commit_id.clone();
                     }
                     Err(e) => {
                         eprintln!("Error fetching commit ID: {:?}", e);
@@ -106,5 +110,5 @@ fn main() -> Result<()> {
         }
         None => {}
     }
-    std::process::exit(exitcode::OK)
+    std::process::exit(exitcode::OK);
 }

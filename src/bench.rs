@@ -44,8 +44,13 @@ impl<'a> Bencher<'a> {
         let error_file = std::fs::File::create("/tmp/error.log")?;
 
         let bench_args = self.process_args(&job.command)?;
+        let is_macos = std::env::consts::OS == "macos";
         let mut command = if job.bench {
-            let mut cmd = Command::new("/usr/bin/time");
+            let mut cmd = if is_macos {
+                Command::new("/usr/local/bin/gtime")
+            } else {
+                Command::new("/usr/bin/time")
+            };
             cmd.args([
                 "-v",
                 format!("--output={}", job.outfile.as_ref().unwrap()).as_str(),

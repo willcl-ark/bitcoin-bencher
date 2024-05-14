@@ -42,17 +42,6 @@ pub struct Cli {
     #[arg(long, default_value=get_random_bitcoin_dir().into_os_string())]
     pub bitcoin_data_dir: PathBuf,
 
-    /// Date in unix time to run tests at.
-    /// Will check out git repo to this date too.
-    /// Useful for backdating tests (hello Craig!)
-    #[arg(long)]
-    pub date: Option<i64>,
-
-    /// Commit hash to run tests at.
-    /// Will check out git repo at this hash
-    #[arg(long)]
-    pub commit_id: Option<String>,
-
     /// The subcommands for bitcoin-bench
     #[clap(subcommand)]
     pub command: Option<Commands>,
@@ -76,6 +65,17 @@ pub enum BenchCommands {
         /// Path to bitcoin source code directory
         #[arg(required = true)]
         src_dir: PathBuf,
+
+        /// Date in unix time to run tests at.
+        /// Will check out git repo to this date too.
+        /// Useful for backdating tests (hello Craig!)
+        #[arg(long)]
+        date: Option<i64>,
+
+        /// Commit hash to run tests at.
+        /// Will check out git repo at this hash
+        #[arg(long)]
+        commit: Option<String>,
     },
 }
 
