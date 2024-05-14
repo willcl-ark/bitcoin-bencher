@@ -71,9 +71,7 @@ impl Config {
             if let Some(bitcoin_data_dir) = &self.settings.bitcoin_data_dir {
                 if let Some(bitcoin_data_dir_str) = bitcoin_data_dir.to_str() {
                     job.command = job.command.replace("{cores}", &nproc.to_string());
-                    job.command = job
-                        .command
-                        .replace("{bitcoin_data_dir}", bitcoin_data_dir_str);
+                    job.command = job.command.replace("{datadir}", bitcoin_data_dir_str);
                 } else {
                     bail!("Failed to convert bitcoin_data_dir to string");
                 }
