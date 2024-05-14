@@ -15,6 +15,9 @@ pub struct Bencher<'a> {
     src_dir: &'a PathBuf,
     commit: &'a Option<String>,
     date: &'a Option<i64>,
+    daily: bool,
+    start: Option<i64>,
+    end: Option<i64>,
 }
 
 impl<'a> Bencher<'a> {
@@ -24,6 +27,9 @@ impl<'a> Bencher<'a> {
         src_dir: &'a PathBuf,
         commit: &'a Option<String>,
         date: &'a Option<i64>,
+        daily: bool,
+        start: Option<i64>,
+        end: Option<i64>,
     ) -> Self {
         Bencher {
             config,
@@ -31,67 +37,72 @@ impl<'a> Bencher<'a> {
             src_dir,
             commit,
             date,
+            daily,
+            start,
+            end,
         }
     }
 
-    fn setup(&self) -> Result<(i64, String)> {
-        // Check source dir appears valid
+    fn setup(&self, date_to_use: i64) -> Result<(i64, String)> {
         let src_dir_path = util::check_source_file(self.src_dir).unwrap_or_else(|e| {
             error!("Error checking for source code: {}", e);
             std::process::exit(exitcode::NOINPUT);
         });
 
-        // Sync the source repository
         if let Err(e) = util::fetch_repo(src_dir_path) {
             error!("Error updating repo: {}", e);
             std::process::exit(exitcode::SOFTWARE);
         }
 
-        // Determine the commit_id and date to use
-        let (commit_id, date_to_use): (String, i64) = if let Some(c) = &self.commit {
-            // If we have a commit ID, we use it and fetch the date
+        let (commit_id, commit_date) = if let Some(c) = &self.commit {
             let commit_date = util::get_commit_date(self.src_dir, c).unwrap_or_else(|e| {
                 error!("Error fetching commit date: {}", e);
                 std::process::exit(exitcode::USAGE);
             });
             (c.clone(), commit_date)
-        } else if let Some(date) = self.date {
-            // If we have a date, we use it to fetch the commit ID
-            let fetched_commit_id = util::get_commit_id_from_date(self.src_dir, date)
-                .unwrap_or_else(|e| {
-                    error!("Error fetching commit ID: {}", e);
-                    std::process::exit(exitcode::USAGE);
-                });
-            (fetched_commit_id, *date)
         } else {
-            // If neither is provided, use the current time
-            let now = chrono::Utc::now().timestamp();
-            let fetched_commit_id = util::get_commit_id_from_date(self.src_dir, &now)
+            let fetched_commit_id = util::get_commit_id_from_date(self.src_dir, &date_to_use)
                 .unwrap_or_else(|e| {
                     error!("Error fetching commit ID: {}", e);
                     std::process::exit(exitcode::USAGE);
                 });
-            (fetched_commit_id, now)
+            (fetched_commit_id, date_to_use)
         };
 
-        // Check out the commit
         util::checkout_commit(src_dir_path, &commit_id).unwrap_or_else(|e| {
             error!("Error checking out commit: {}", e);
             std::process::exit(exitcode::SOFTWARE);
         });
         debug!(
             "Using date: {:?}, and commit_id: {}",
-            util::unix_timestamp_to_hr(date_to_use),
+            util::unix_timestamp_to_hr(commit_date),
             commit_id
         );
 
-        // Return the date and commit ID
-        Ok((date_to_use, commit_id))
+        Ok((commit_date, commit_id))
     }
 
     pub fn run(&mut self) -> Result<()> {
-        let (date, commit_id) = self.setup()?;
-        let run_id = self.db.record_run(date, commit_id)?;
+        if self.daily {
+            let start_date = self.start.unwrap();
+            let end_date = self.end.unwrap();
+
+            let mut current_date = start_date;
+            while current_date <= end_date {
+                let (date, commit_id) = self.setup(current_date)?;
+                self.run_benchmarks(date, &commit_id)?;
+                current_date += 86400; // Increment by one day (86400 seconds)
+            }
+        } else {
+            let (date, commit_id) =
+                self.setup(self.date.unwrap_or_else(|| chrono::Utc::now().timestamp()))?;
+            self.run_benchmarks(date, &commit_id)?;
+        }
+        Ok(())
+    }
+
+    fn run_benchmarks(&mut self, date: i64, commit_id: &str) -> Result<()> {
+        let run_id = self.db.record_run(date, commit_id.to_string())?;
         let jobs = std::mem::take(&mut self.config.jobs);
 
         std::env::set_current_dir(self.src_dir)
@@ -128,7 +139,6 @@ impl<'a> Bencher<'a> {
 
             cmd
         } else {
-            // Split the command and its arguments
             let parts: Vec<&str> = job.command.split_whitespace().collect();
             if parts.is_empty() {
                 bail!("Empty command provided for job {}", job.name);

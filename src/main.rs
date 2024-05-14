@@ -1,11 +1,11 @@
 use anyhow::Result;
-use env_logger::Env;
-use log::{error, info};
-
-use cli::{BenchCommands, Cli, Commands};
+use chrono::NaiveDate;
+use cli::{BenchCommands, Cli, Commands, RunCommands};
 use config::Config;
 use database::Database;
+use env_logger::Env;
 use graph::plot_job_metrics;
+use log::{error, info};
 
 extern crate exitcode;
 
@@ -16,6 +16,11 @@ mod database;
 mod graph;
 mod result;
 mod util;
+
+fn parse_date(date_str: &str) -> Result<i64> {
+    let date = NaiveDate::parse_from_str(date_str, "%Y-%m-%d")?;
+    Ok(date.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp())
+}
 
 fn main() -> Result<()> {
     // Setup logging
@@ -49,18 +54,63 @@ fn main() -> Result<()> {
 
     // Handle CLI commands
     match &cli.command {
-        Some(Commands::Bench(BenchCommands::Run {
-            src_dir,
-            commit,
-            date,
-        })) => {
-            // Run benchmarks
-            let mut bencher = bench::Bencher::new(&mut config, &database, src_dir, commit, date);
-            if let Err(e) = bencher.run() {
-                error!("{}", e);
-                std::process::exit(exitcode::SOFTWARE);
+        Some(Commands::Bench(BenchCommands::Run { run_command })) => {
+            match run_command {
+                RunCommands::Once {
+                    src_dir,
+                    commit,
+                    date,
+                } => {
+                    // Run benchmarks once
+                    let mut bencher = bench::Bencher::new(
+                        &mut config,
+                        &database,
+                        src_dir,
+                        commit,
+                        date,
+                        false,
+                        None,
+                        None,
+                    );
+                    if let Err(e) = bencher.run() {
+                        error!("{}", e);
+                        std::process::exit(exitcode::SOFTWARE);
+                    }
+                    info!("Finished running benchmarks");
+                }
+                RunCommands::Daily {
+                    start,
+                    end,
+                    src_dir,
+                } => {
+                    // Parse start and end dates
+                    let start_timestamp = parse_date(start).unwrap_or_else(|e| {
+                        error!("Invalid start date format: {}", e);
+                        std::process::exit(exitcode::USAGE);
+                    });
+                    let end_timestamp = parse_date(end).unwrap_or_else(|e| {
+                        error!("Invalid end date format: {}", e);
+                        std::process::exit(exitcode::USAGE);
+                    });
+
+                    // Run benchmarks daily
+                    let mut bencher = bench::Bencher::new(
+                        &mut config,
+                        &database,
+                        src_dir,
+                        &None,
+                        &None,
+                        true,
+                        Some(start_timestamp),
+                        Some(end_timestamp),
+                    );
+                    if let Err(e) = bencher.run() {
+                        error!("{}", e);
+                        std::process::exit(exitcode::SOFTWARE);
+                    }
+                    info!("Finished running daily benchmarks");
+                }
             }
-            info!("Finished running benchmarks");
         }
         Some(Commands::Graph(_)) => {
             plot_job_metrics(&database, &cli.bench_data_dir.to_string_lossy())?;

@@ -1,12 +1,10 @@
-use std::path::PathBuf;
-
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
 use log::info;
+use std::path::PathBuf;
 use tempdir::TempDir;
 
 fn get_default_data_dir() -> PathBuf {
-    // Ridiculous this needs a crate...
     let mut path = dirs::config_dir().expect("Could not get config dir");
     path.pop();
     path.push(".config/bench_bitcoin");
@@ -14,7 +12,6 @@ fn get_default_data_dir() -> PathBuf {
 }
 
 fn get_random_bitcoin_dir() -> PathBuf {
-    // This too
     TempDir::new("bench")
         .expect("Could not create temp dir")
         .into_path()
@@ -38,7 +35,6 @@ pub struct Cli {
     pub bench_db_name: String,
 
     /// Data dir to use for bitcoin core during tests.
-    /// Randomly created when not supplied.
     #[arg(long, default_value=get_random_bitcoin_dir().into_os_string())]
     pub bitcoin_data_dir: PathBuf,
 
@@ -62,20 +58,39 @@ pub enum Commands {
 pub enum BenchCommands {
     /// Command to run benchmarks
     Run {
+        #[command(subcommand)]
+        run_command: RunCommands,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum RunCommands {
+    /// Run benchmarks once
+    Once {
         /// Path to bitcoin source code directory
         #[arg(required = true)]
         src_dir: PathBuf,
 
         /// Date in unix time to run tests at.
-        /// Will check out git repo to this date too.
-        /// Useful for backdating tests (hello Craig!)
         #[arg(long)]
         date: Option<i64>,
 
         /// Commit hash to run tests at.
-        /// Will check out git repo at this hash
         #[arg(long)]
         commit: Option<String>,
+    },
+
+    /// Run benchmarks daily between the start and end dates
+    Daily {
+        /// Start date for daily benchmarks in YYYY-MM-DD format
+        start: String,
+
+        /// End date for daily benchmarks in YYYY-MM-DD format
+        end: String,
+
+        /// Path to bitcoin source code directory
+        #[arg(required = true)]
+        src_dir: PathBuf,
     },
 }
 
