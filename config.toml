@@ -5,7 +5,6 @@ binaries = ["git", "/usr/bin/time"]
 # Run untimed jobs using `bench=false`
 jobs = [
     { name = "git-clean",        command = "git clean -dfx" },
-    { name = "clean-datadir",    command = "rm -Rf /mnt/bench/.bitcoin/*" },
     { name = "autogen",          command = "./autogen.sh" },
     { name = "configure",        command = "./configure", env = ["CC=clang-15", "CXX=clang++-15"]},
     { name = "make-clean",       command = "make -j{cores}", bench = false },
@@ -14,3 +13,4 @@ jobs = [
     { name = "functional-tests", command = "test/functional/test_runner.py --cachedir=/mnt/tmp/cache --tmpdir=/mnt/tmp" },
     { name = "IBD",              command = "./src/bitcoind -datadir={datadir} -daemon=0 -connect=127.0.0.1:8333 -stopatheight=840000 -port=8444 -rpcport=8445 -dbcache=16384" }
 ]
+cleanup = true

@@ -20,6 +20,7 @@ pub struct Settings {
 #[derive(Deserialize, Debug, Default)]
 pub struct Jobs {
     pub jobs: Vec<Job>,
+    pub cleanup: bool,
 }
 
 fn default_bench() -> bool {

@@ -115,8 +115,8 @@ impl<'a> Bencher<'a> {
     }
 
     fn run_single_job(&self, job: &Job, run_id: i64) -> Result<()> {
-        let output_filename = format!("/tmp/{}-output.log", run_id);
-        let error_filename = format!("/tmp/{}-error.log", run_id);
+        let output_filename = format!("/tmp/{}-{}-output.log", run_id, &job.name);
+        let error_filename = format!("/tmp/{}-{}-error.log", run_id, &job.name);
         let output_file = std::fs::File::create(&output_filename)?;
         let error_file = std::fs::File::create(&error_filename)?;
 
@@ -231,6 +231,9 @@ impl<'a> Bencher<'a> {
             BenchType::Single => {
                 let (commit_date, commit_id) = self.setup(run_date)?;
                 self.run_benchmarks(run_date, &commit_id, commit_date)?;
+                if self.config.jobs.cleanup {
+                    util::erase_dir_and_contents(&self.config.settings.bitcoin_data_dir)?;
+                }
             }
             BenchType::Multi => {
                 let options = match &self.options {
@@ -246,6 +249,9 @@ impl<'a> Bencher<'a> {
                     let (commit_date, commit_id) = self.setup(current_date)?;
                     self.run_benchmarks(run_date, &commit_id, commit_date)?;
                     current_date += 86400; // Increment by one day (86400 seconds)
+                    if self.config.jobs.cleanup {
+                        util::erase_dir_and_contents(&self.config.settings.bitcoin_data_dir)?;
+                    }
                 }
             }
         }
