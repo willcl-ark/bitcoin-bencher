@@ -6,6 +6,8 @@ use env_logger::Env;
 use graph::plot_job_metrics;
 use log::{error, info};
 
+use crate::bench::{BenchOptions, Multi, Single};
+
 extern crate exitcode;
 
 mod bench;
@@ -50,22 +52,17 @@ fn main() -> Result<()> {
     match &cli.command {
         Some(Commands::Bench(BenchCommands::Run { run_command })) => {
             match run_command {
-                RunCommands::Once {
-                    src_dir,
-                    commit,
-                    date,
-                } => {
-                    // Run benchmarks once
+                RunCommands::Once { src_dir, commit } => {
+                    let single_options = BenchOptions::Single(Single {
+                        commit: commit.clone(),
+                    });
                     let mut bencher = bench::Bencher::new(
                         &mut config,
                         &database,
                         src_dir,
-                        commit,
-                        date,
-                        false,
-                        None,
-                        None,
-                    );
+                        bench::BenchType::Single,
+                        single_options,
+                    )?;
                     if let Err(e) = bencher.run() {
                         error!("{}", e);
                         std::process::exit(exitcode::SOFTWARE);
@@ -77,27 +74,15 @@ fn main() -> Result<()> {
                     end,
                     src_dir,
                 } => {
-                    // Parse start and end dates
-                    let start_timestamp = util::parse_date(start).unwrap_or_else(|e| {
-                        error!("Invalid start date format: {}", e);
-                        std::process::exit(exitcode::USAGE);
-                    });
-                    let end_timestamp = util::parse_date(end).unwrap_or_else(|e| {
-                        error!("Invalid end date format: {}", e);
-                        std::process::exit(exitcode::USAGE);
-                    });
-
                     // Run benchmarks daily
+                    let multi_options = BenchOptions::Multi(Multi { start, end });
                     let mut bencher = bench::Bencher::new(
                         &mut config,
                         &database,
                         src_dir,
-                        &None,
-                        &None,
-                        true,
-                        Some(start_timestamp),
-                        Some(end_timestamp),
-                    );
+                        bench::BenchType::Multi,
+                        multi_options,
+                    )?;
                     if let Err(e) = bencher.run() {
                         error!("{}", e);
                         std::process::exit(exitcode::SOFTWARE);

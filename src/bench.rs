@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use log::{debug, error, info};
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -13,11 +13,27 @@ pub struct Bencher<'a> {
     config: &'a mut Config,
     db: &'a Database,
     src_dir: &'a PathBuf,
-    commit: &'a Option<String>,
-    date: &'a Option<i64>,
-    daily: bool,
-    start: Option<i64>,
-    end: Option<i64>,
+    bench_type: BenchType,
+    options: BenchOptions<'a>,
+}
+
+pub enum BenchType {
+    Single,
+    Multi,
+}
+
+pub enum BenchOptions<'a> {
+    Single(Single),
+    Multi(Multi<'a>),
+}
+
+pub struct Single {
+    pub commit: Option<String>,
+}
+
+pub struct Multi<'a> {
+    pub start: &'a String,
+    pub end: &'a String,
 }
 
 impl<'a> Bencher<'a> {
@@ -25,54 +41,64 @@ impl<'a> Bencher<'a> {
         config: &'a mut Config,
         db: &'a Database,
         src_dir: &'a PathBuf,
-        commit: &'a Option<String>,
-        date: &'a Option<i64>,
-        daily: bool,
-        start: Option<i64>,
-        end: Option<i64>,
-    ) -> Self {
-        Bencher {
+        bench_type: BenchType,
+        options: BenchOptions<'a>,
+    ) -> Result<Self> {
+        match &options {
+            BenchOptions::Single(single) => {
+                if single.commit.is_none() {
+                    bail!("Commit must be provided for Single bench type");
+                }
+            }
+            BenchOptions::Multi(multi) => {
+                if multi.start.is_empty() || multi.end.is_empty() {
+                    bail!("Start and end dates must be provided for Multi bench type");
+                }
+            }
+        }
+
+        Ok(Bencher {
             config,
             db,
             src_dir,
-            commit,
-            date,
-            daily,
-            start,
-            end,
-        }
+            bench_type,
+            options,
+        })
     }
 
-    fn setup(&self, date_to_use: i64) -> Result<(i64, String)> {
-        let src_dir_path = util::check_source_file(self.src_dir).unwrap_or_else(|e| {
-            error!("Error checking for source code: {}", e);
-            std::process::exit(exitcode::NOINPUT);
-        });
-
-        if let Err(e) = util::fetch_repo(src_dir_path) {
-            error!("Error updating repo: {}", e);
-            std::process::exit(exitcode::SOFTWARE);
-        }
-
-        let (commit_id, commit_date) = if let Some(c) = &self.commit {
-            let commit_date = util::get_commit_date(self.src_dir, c).unwrap_or_else(|e| {
-                error!("Error fetching commit date: {}", e);
-                std::process::exit(exitcode::USAGE);
-            });
-            (c.clone(), commit_date)
-        } else {
-            let fetched_commit_id = util::get_commit_id_from_date(self.src_dir, &date_to_use)
-                .unwrap_or_else(|e| {
-                    error!("Error fetching commit ID: {}", e);
+    pub fn setup(&self, date_to_use: i64) -> Result<(i64, String)> {
+        let (commit_id, commit_date) = match &self.options {
+            BenchOptions::Single(single) => {
+                let commit = single
+                    .commit
+                    .as_ref()
+                    .expect("Commit should be checked in new()");
+                let commit_date = util::get_commit_date(self.src_dir, commit).unwrap_or_else(|e| {
+                    error!("Error fetching commit date: {}", e);
                     std::process::exit(exitcode::USAGE);
                 });
-            (fetched_commit_id, date_to_use)
+                (commit.clone(), commit_date)
+            }
+            BenchOptions::Multi(_) => {
+                let fetched_commit_id = util::get_commit_id_from_date(self.src_dir, &date_to_use)
+                    .unwrap_or_else(|e| {
+                        error!("Error fetching commit ID: {}", e);
+                        std::process::exit(exitcode::USAGE);
+                    });
+                let commit_date = util::get_commit_date(self.src_dir, &fetched_commit_id)
+                    .unwrap_or_else(|e| {
+                        error!("Error fetching commit date: {}", e);
+                        std::process::exit(exitcode::USAGE);
+                    });
+                (fetched_commit_id, commit_date)
+            }
         };
 
-        util::checkout_commit(src_dir_path, &commit_id).unwrap_or_else(|e| {
+        util::checkout_commit(self.src_dir, &commit_id).unwrap_or_else(|e| {
             error!("Error checking out commit: {}", e);
             std::process::exit(exitcode::SOFTWARE);
         });
+
         debug!(
             "Using date: {:?}, and commit_id: {}",
             util::unix_timestamp_to_hr(commit_date),
@@ -83,20 +109,38 @@ impl<'a> Bencher<'a> {
     }
 
     pub fn run(&mut self) -> Result<()> {
-        if self.daily {
-            let start_date = self.start.unwrap();
-            let end_date = self.end.unwrap();
+        let src_dir_path = util::check_source_file(self.src_dir).unwrap_or_else(|e| {
+            error!("Error checking for source code: {}", e);
+            std::process::exit(exitcode::NOINPUT);
+        });
 
-            let mut current_date = start_date;
-            while current_date <= end_date {
-                let (date, commit_id) = self.setup(current_date)?;
-                self.run_benchmarks(date, &commit_id)?;
-                current_date += 86400; // Increment by one day (86400 seconds)
+        if let Err(e) = util::fetch_repo(src_dir_path) {
+            error!("Error updating repo: {}", e);
+            std::process::exit(exitcode::SOFTWARE);
+        }
+
+        match self.bench_type {
+            BenchType::Single => {
+                let date = chrono::Utc::now().timestamp();
+                let (commit_date, commit_id) = self.setup(date)?;
+                self.run_benchmarks(commit_date, &commit_id)?;
             }
-        } else {
-            let (date, commit_id) =
-                self.setup(self.date.unwrap_or_else(|| chrono::Utc::now().timestamp()))?;
-            self.run_benchmarks(date, &commit_id)?;
+            BenchType::Multi => {
+                let options = match &self.options {
+                    BenchOptions::Multi(multi) => multi,
+                    _ => bail!("Invalid options for Multi bench type"),
+                };
+                let start_date =
+                    util::parse_date(options.start).context("Failed to parse start date")?;
+                let end_date = util::parse_date(options.end).context("Failed to parse end date")?;
+
+                let mut current_date = start_date;
+                while current_date <= end_date {
+                    let (commit_date, commit_id) = self.setup(current_date)?;
+                    self.run_benchmarks(commit_date, &commit_id)?;
+                    current_date += 86400; // Increment by one day (86400 seconds)
+                }
+            }
         }
         Ok(())
     }

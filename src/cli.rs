@@ -67,17 +67,11 @@ pub enum BenchCommands {
 pub enum RunCommands {
     /// Run benchmarks once
     Once {
-        /// Path to bitcoin source code directory
-        #[arg(required = true)]
-        src_dir: PathBuf,
-
-        /// Date in unix time to run tests at.
-        #[arg(long)]
-        date: Option<i64>,
-
         /// Commit hash to run tests at.
-        #[arg(long)]
         commit: Option<String>,
+
+        /// Path to bitcoin source code directory
+        src_dir: PathBuf,
     },
 
     /// Run benchmarks daily between the start and end dates
@@ -89,7 +83,6 @@ pub enum RunCommands {
         end: String,
 
         /// Path to bitcoin source code directory
-        #[arg(required = true)]
         src_dir: PathBuf,
     },
 }
