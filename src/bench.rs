@@ -210,6 +210,7 @@ impl<'a> Bencher<'a> {
         for job in &jobs.jobs {
             self.run_single_job(job, run_id)?;
         }
+        self.config.jobs = jobs; // What was this doing again?
 
         Ok(())
     }
