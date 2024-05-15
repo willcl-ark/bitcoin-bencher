@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use log::{debug, info};
 use rusqlite::{params, Connection};
 use std::path::Path;
@@ -7,9 +7,11 @@ use crate::result::TimeResult;
 
 #[derive(Debug)]
 pub struct Run {
-    pub run_id: i32,
-    // date: i64,
-    // commit_id: String,
+    pub id: Option<i32>,
+    pub run_date: i64,
+    pub commit_id: String,
+    pub commit_date: i64,
+    pub was_master: bool,
 }
 
 #[derive(Debug)]
@@ -17,7 +19,6 @@ pub struct Job {
     pub job_id: i64,
     pub run_id: i64,
     pub result: TimeResult,
-    pub commit_id: String,
 }
 
 pub struct Database {
@@ -57,8 +58,10 @@ impl Database {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS runs (
                 run_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date INTEGER NOT NULL,
-                commit_id TEXT NOT NULL
+                run_date INTEGER NOT NULL,
+                was_master INTEGER NOT NULL,
+                commit_id TEXT NOT NULL,
+                commit_date TEXT NOT NULL
             );",
             params![],
         )?;
@@ -89,14 +92,14 @@ impl Database {
         Ok(())
     }
 
-    pub fn record_run(&self, date: i64, commit_id: String) -> Result<i64> {
+    pub fn record_run(&self, run: Run) -> Result<i64> {
         self.conn.execute(
-            "INSERT INTO runs (date, commit_id) VALUES (?, ?)",
-            params![date, commit_id],
+            "INSERT INTO runs (run_date, was_master, commit_id, commit_date) VALUES (?, ?, ?, ?)",
+            params![run.run_date, run.was_master, run.commit_id, run.commit_date],
         )?;
         debug!(
-            "Recorded run on date: {:?} with commit_id: {}",
-            date, commit_id
+            "Recorded run on date: {:?} with commit_id: {}, commit_date: {} and was_master: {}",
+            run.run_date, run.commit_id, run.commit_date, run.was_master
         );
         Ok(self.conn.last_insert_rowid())
     }
@@ -137,48 +140,52 @@ impl Database {
         Ok(self.conn.last_insert_rowid())
     }
 
-    pub fn get_job_names(&self) -> Result<Vec<String>> {
-        let mut stmt = self.conn.prepare("SELECT DISTINCT job_name FROM jobs")?;
-        let job_names = stmt
-            .query_map([], |row| row.get(0))
-            .with_context(|| "Failed to map query results")?
-            .map(|result| result.map_err(anyhow::Error::from))
-            .collect::<Result<Vec<String>>>()?;
-        debug!("Got job names: {:?}", job_names);
-        Ok(job_names)
-    }
+    pub fn get_jobs_by_name(&self, job_name: &String) -> Result<Vec<(Job, Run)>> {
+        let mut stmt = self.conn.prepare(
+            "
+            SELECT jobs.*, runs.commit_id, runs.run_date, runs.was_master
+            FROM jobs
+            INNER JOIN runs ON jobs.run_id = runs.run_id
+            WHERE job_name = ?
+            ORDER BY jobs.run_id ASC
+        ",
+        )?;
 
-    pub fn get_jobs_by_name(&self, job_name: &String) -> Result<Vec<Job>> {
-        let mut stmt = self
-        .conn
-        .prepare("SELECT jobs.*, runs.commit_id FROM jobs INNER JOIN runs ON jobs.run_id = runs.run_id WHERE job_name = ? ORDER BY jobs.run_id ASC")?;
         let job_iter = stmt.query_map([job_name], |row| {
-            Ok(Job {
-                job_id: row.get(0)?,
-                run_id: row.get(1)?,
-                result: TimeResult {
-                    command: row.get(2)?,
-                    user_time: row.get(3)?,
-                    system_time: row.get(4)?,
-                    percent_of_cpu: row.get(5)?,
-                    max_resident_set_size_kb: row.get(6)?,
-                    major_page_faults: row.get(7)?,
-                    minor_page_faults: row.get(8)?,
-                    voluntary_context_switches: row.get(9)?,
-                    involuntary_context_switches: row.get(10)?,
-                    file_system_outputs: row.get(11)?,
-                    exit_status: row.get(12)?,
+            Ok((
+                Job {
+                    job_id: row.get(0)?,
+                    run_id: row.get(1)?,
+                    result: TimeResult {
+                        command: row.get(2)?,
+                        user_time: row.get(3)?,
+                        system_time: row.get(4)?,
+                        percent_of_cpu: row.get(5)?,
+                        max_resident_set_size_kb: row.get(6)?,
+                        major_page_faults: row.get(7)?,
+                        minor_page_faults: row.get(8)?,
+                        voluntary_context_switches: row.get(9)?,
+                        involuntary_context_switches: row.get(10)?,
+                        file_system_outputs: row.get(11)?,
+                        exit_status: row.get(12)?,
+                    },
                 },
-                commit_id: row.get(13)?,
-            })
+                Run {
+                    id: Some(row.get(1)?),
+                    run_date: row.get(14)?,
+                    commit_id: row.get(13)?,
+                    commit_date: row.get(15)?,
+                    was_master: row.get(16)?,
+                },
+            ))
         })?;
 
-        let mut jobs = Vec::new();
+        let mut jobs_with_runs = Vec::new();
         for job in job_iter {
-            debug!("Got job: {:?}", job);
-            jobs.push(job?);
+            debug!("Got job with run: {:?}", job);
+            jobs_with_runs.push(job?);
         }
 
-        Ok(jobs)
+        Ok(jobs_with_runs)
     }
 }

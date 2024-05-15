@@ -36,7 +36,7 @@ pub struct Cli {
 
     /// Data dir to use for bitcoin core during tests.
     #[arg(long, default_value=get_random_bitcoin_dir().into_os_string())]
-    pub bitcoin_data_dir: PathBuf,
+    pub bitcoin_data_dir: Option<PathBuf>,
 
     /// Subcommands for bitcoin-bench
     #[clap(subcommand)]
@@ -97,18 +97,21 @@ impl Cli {
     pub fn init() -> Result<Self> {
         let mut cli = Cli::parse();
         if cli.config_file.is_none() {
-            cli.config_file = Some(
-                std::env::current_dir()
-                    .map_err(|e| anyhow!("Failed to get current working directory: {}", e))?,
+            let current_dir = std::env::current_dir()
+                .map_err(|e| anyhow!("Failed to get current working directory: {}", e))?;
+            cli.config_file = Some(current_dir.join("config.toml"));
+        }
+        // Check if the subcommand is Bench and set the bitcoin_data_dir
+        if let Some(Commands::Bench(_)) = cli.command {
+            cli.bitcoin_data_dir = Some(get_random_bitcoin_dir());
+            info!(
+                "Bitcoin datadir set to: {}",
+                cli.bitcoin_data_dir.as_ref().unwrap().to_string_lossy()
             );
         }
         info!(
             "Bitcoin bencher datadir set to: {}",
             cli.bench_data_dir.display()
-        );
-        info!(
-            "Bitcoin datadir set to: {}",
-            cli.bitcoin_data_dir.to_string_lossy()
         );
         Ok(cli)
     }

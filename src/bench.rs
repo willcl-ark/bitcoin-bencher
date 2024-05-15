@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use crate::config::{Config, Job};
-use crate::database::Database;
+use crate::database::{Database, Run};
 use crate::result::TimeResult;
 use crate::util;
 
@@ -116,11 +116,11 @@ impl<'a> Bencher<'a> {
             std::process::exit(exitcode::SOFTWARE);
         }
 
+        let run_date = chrono::Utc::now().timestamp();
         match self.bench_type {
             BenchType::Single => {
-                let date = chrono::Utc::now().timestamp();
-                let (commit_date, commit_id) = self.setup(date)?;
-                self.run_benchmarks(commit_date, &commit_id)?;
+                let (commit_date, commit_id) = self.setup(run_date)?;
+                self.run_benchmarks(run_date, &commit_id, commit_date)?;
             }
             BenchType::Multi => {
                 let options = match &self.options {
@@ -134,7 +134,7 @@ impl<'a> Bencher<'a> {
                 let mut current_date = start_date;
                 while current_date <= end_date {
                     let (commit_date, commit_id) = self.setup(current_date)?;
-                    self.run_benchmarks(commit_date, &commit_id)?;
+                    self.run_benchmarks(run_date, &commit_id, commit_date)?;
                     current_date += 86400; // Increment by one day (86400 seconds)
                 }
             }
@@ -142,8 +142,16 @@ impl<'a> Bencher<'a> {
         Ok(())
     }
 
-    fn run_benchmarks(&mut self, date: i64, commit_id: &str) -> Result<()> {
-        let run_id = self.db.record_run(date, commit_id.to_string())?;
+    fn run_benchmarks(&mut self, run_date: i64, commit_id: &str, commit_date: i64) -> Result<()> {
+        let run = Run {
+            id: None,
+            run_date,
+            commit_id: commit_id.to_string(),
+            commit_date,
+            was_master: true,
+        };
+
+        let run_id = self.db.record_run(run)?;
         let jobs = std::mem::take(&mut self.config.jobs);
 
         std::env::set_current_dir(self.src_dir)

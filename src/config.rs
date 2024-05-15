@@ -1,10 +1,7 @@
 use anyhow::{bail, Context, Result};
 use log::debug;
 use serde::Deserialize;
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::{fs, path::PathBuf};
 
 use crate::{cli::Cli, util};
 
@@ -40,10 +37,10 @@ pub struct Job {
 }
 
 impl Config {
-    pub fn load_from_file(cli: &Cli, bitcoin_data_dir: &Path) -> Result<Self> {
+    pub fn load_from_file(cli: &Cli, bitcoin_data_dir: &Option<PathBuf>) -> Result<Self> {
         let config_contents = fs::read_to_string(cli.config_file.as_ref().unwrap())?;
         let mut config: Config = toml::from_str(&config_contents)?;
-        config.settings.bitcoin_data_dir = Some(bitcoin_data_dir.to_path_buf());
+        config.settings.bitcoin_data_dir = bitcoin_data_dir.clone();
         debug!("Using configuration: {:?}", config);
 
         config.substitute_defaults(cli);
