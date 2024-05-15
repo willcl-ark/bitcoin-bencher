@@ -101,14 +101,10 @@ impl Cli {
                 .map_err(|e| anyhow!("Failed to get current working directory: {}", e))?;
             cli.config_file = Some(current_dir.join("config.toml"));
         }
-        // Check if the subcommand is Bench and set the bitcoin_data_dir
-        if let Some(Commands::Bench(_)) = cli.command {
-            cli.bitcoin_data_dir = Some(get_random_bitcoin_dir());
-            info!(
-                "Bitcoin datadir set to: {}",
-                cli.bitcoin_data_dir.as_ref().unwrap().to_string_lossy()
-            );
-        }
+        info!(
+            "Bitcoin datadir set to: {}",
+            cli.bitcoin_data_dir.as_ref().unwrap().to_string_lossy()
+        );
         info!(
             "Bitcoin bencher datadir set to: {}",
             cli.bench_data_dir.display()
