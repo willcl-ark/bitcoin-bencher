@@ -1,5 +1,5 @@
 [settings]
-binaries = ["bitcoind", "git", "/usr/bin/time"]
+binaries = ["git", "/usr/bin/time"]
 
 [jobs]
 # Run untimed jobs using `bench=false`
