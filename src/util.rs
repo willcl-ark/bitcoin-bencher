@@ -1,4 +1,5 @@
 use std::{
+    fs,
     path::PathBuf,
     process::{Command, Stdio},
     time::{Duration, UNIX_EPOCH},
@@ -170,4 +171,21 @@ pub fn get_nproc() -> Result<String> {
 pub fn parse_date(date_str: &str) -> Result<i64> {
     let date = NaiveDate::parse_from_str(date_str, "%Y-%m-%d")?;
     Ok(date.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp())
+}
+
+pub fn erase_datadir_except_debug_log(data_dir: &Option<PathBuf>) -> Result<()> {
+    for entry in fs::read_dir(data_dir.clone().unwrap())? {
+        let entry = entry?;
+        let path = entry.path();
+        if let Some(file_name) = path.file_name() {
+            if file_name != "debug.log" {
+                if path.is_dir() {
+                    fs::remove_dir_all(&path)?;
+                } else {
+                    fs::remove_file(&path)?;
+                }
+            }
+        }
+    }
+    Ok(())
 }

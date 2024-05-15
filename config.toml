@@ -4,11 +4,11 @@ binaries = ["git", "/usr/bin/time"]
 [jobs]
 # Run untimed jobs using `bench=false`
 jobs = [
-    { name = "autogen",          command = "./autogen.sh" },
-    { name = "configure",        command = "./configure", env = ["CC=clang-15", "CXX=clang++-15"]},
-    { name = "make-clean",       command = "make -j{cores}", bench = false },
+    # { name = "autogen",          command = "./autogen.sh" },
+    # { name = "configure",        command = "./configure", env = ["CC=clang-15", "CXX=clang++-15"]},
+    # { name = "make-clean",       command = "make -j{cores}", bench = false },
     { name = "make",             command = "make -j{cores}" },
-    { name = "unit-tests",       command = "make check -j{cores}" },
-    { name = "functional-tests", command = "test/functional/test_runner.py --cachedir=/mnt/tmp/cache --tmpdir=/mnt/tmp" },
-    { name = "IBD",              command = "./src/bitcoind -datadir={datadir} -connect=127.0.0.1:8333 -stopatheight=800000 -port=8444 -rpcport=8445 -dbcache=16384" }
+    # { name = "unit-tests",       command = "make check -j{cores}" },
+    # { name = "functional-tests", command = "test/functional/test_runner.py --cachedir=/mnt/tmp/cache --tmpdir=/mnt/tmp" },
+    { name = "IBD",              command = "./src/bitcoind -datadir={datadir} -connect=127.0.0.1:8333 -stopatheight=100000 -port=8444 -rpcport=8445 -dbcache=16384" }
 ]

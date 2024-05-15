@@ -161,8 +161,10 @@ impl<'a> Bencher<'a> {
         for job in &jobs.jobs {
             self.run_single_job(job, run_id)?;
         }
+        // self.config.jobs = jobs; // What was this doing again?
 
-        self.config.jobs = jobs;
+        // Erase datadir after run, save debug.log
+        util::erase_datadir_except_debug_log(&self.config.settings.bitcoin_data_dir)?;
         Ok(())
     }
 
