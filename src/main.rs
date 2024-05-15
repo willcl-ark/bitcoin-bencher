@@ -1,5 +1,4 @@
 use anyhow::Result;
-use chrono::NaiveDate;
 use cli::{BenchCommands, Cli, Commands, RunCommands};
 use config::Config;
 use database::Database;
@@ -16,11 +15,6 @@ mod database;
 mod graph;
 mod result;
 mod util;
-
-fn parse_date(date_str: &str) -> Result<i64> {
-    let date = NaiveDate::parse_from_str(date_str, "%Y-%m-%d")?;
-    Ok(date.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp())
-}
 
 fn main() -> Result<()> {
     // Setup logging
@@ -84,11 +78,11 @@ fn main() -> Result<()> {
                     src_dir,
                 } => {
                     // Parse start and end dates
-                    let start_timestamp = parse_date(start).unwrap_or_else(|e| {
+                    let start_timestamp = util::parse_date(start).unwrap_or_else(|e| {
                         error!("Invalid start date format: {}", e);
                         std::process::exit(exitcode::USAGE);
                     });
-                    let end_timestamp = parse_date(end).unwrap_or_else(|e| {
+                    let end_timestamp = util::parse_date(end).unwrap_or_else(|e| {
                         error!("Invalid end date format: {}", e);
                         std::process::exit(exitcode::USAGE);
                     });

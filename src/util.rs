@@ -166,3 +166,8 @@ pub fn get_nproc() -> Result<String> {
         .trim()
         .to_string())
 }
+
+pub fn parse_date(date_str: &str) -> Result<i64> {
+    let date = NaiveDate::parse_from_str(date_str, "%Y-%m-%d")?;
+    Ok(date.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp())
+}
