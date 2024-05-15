@@ -91,86 +91,34 @@ impl<'a> Bencher<'a> {
             }
         };
 
-        util::checkout_commit(self.src_dir, &commit_id).unwrap_or_else(|e| {
-            error!("Error checking out commit: {}", e);
-            std::process::exit(exitcode::SOFTWARE);
-        });
-
-        debug!(
-            "Using date: {:?}, and commit_id: {}",
-            util::unix_timestamp_to_hr(commit_date),
-            commit_id
-        );
-
         Ok((commit_date, commit_id))
     }
 
-    pub fn run(&mut self) -> Result<()> {
-        let src_dir_path = util::check_source_file(self.src_dir).unwrap_or_else(|e| {
-            error!("Error checking for source code: {}", e);
-            std::process::exit(exitcode::NOINPUT);
-        });
-
-        if let Err(e) = util::fetch_repo(src_dir_path) {
-            error!("Error updating repo: {}", e);
-            std::process::exit(exitcode::SOFTWARE);
-        }
-
-        let run_date = chrono::Utc::now().timestamp();
-        match self.bench_type {
-            BenchType::Single => {
-                let (commit_date, commit_id) = self.setup(run_date)?;
-                self.run_benchmarks(run_date, &commit_id, commit_date)?;
-            }
-            BenchType::Multi => {
-                let options = match &self.options {
-                    BenchOptions::Multi(multi) => multi,
-                    _ => bail!("Invalid options for Multi bench type"),
-                };
-                let start_date =
-                    util::parse_date(options.start).context("Failed to parse start date")?;
-                let end_date = util::parse_date(options.end).context("Failed to parse end date")?;
-
-                let mut current_date = start_date;
-                while current_date <= end_date {
-                    let (commit_date, commit_id) = self.setup(current_date)?;
-                    self.run_benchmarks(run_date, &commit_id, commit_date)?;
-                    current_date += 86400; // Increment by one day (86400 seconds)
-                }
-            }
-        }
-        Ok(())
+    fn process_env_vars(&self, env: &Option<Vec<String>>) -> Option<Vec<(OsString, OsString)>> {
+        env.as_ref().map(|env_vars| {
+            env_vars
+                .iter()
+                .filter_map(|var| {
+                    var.split_once('=')
+                        .map(|(key, value)| (OsString::from(key), OsString::from(value)))
+                })
+                .collect()
+        })
     }
 
-    fn run_benchmarks(&mut self, run_date: i64, commit_id: &str, commit_date: i64) -> Result<()> {
-        let run = Run {
-            id: None,
-            run_date,
-            commit_id: commit_id.to_string(),
-            commit_date,
-            was_master: true,
-        };
-
-        let run_id = self.db.record_run(run)?;
-        let jobs = std::mem::take(&mut self.config.jobs);
-
-        std::env::set_current_dir(self.src_dir)
-            .map_err(|e| anyhow::anyhow!("Failed to change directory: {:?}", e))?;
-        info!("Changed working directory to {}", self.src_dir.display());
-
-        for job in &jobs.jobs {
-            self.run_single_job(job, run_id)?;
+    fn process_args(&'a self, args: &'a str) -> Result<Vec<&str>> {
+        let parts: Vec<&str> = args.split_whitespace().collect();
+        if parts.is_empty() {
+            bail!("Empty command provided");
         }
-        // self.config.jobs = jobs; // What was this doing again?
-
-        // Erase datadir after run, save debug.log
-        util::erase_datadir_except_debug_log(&self.config.settings.bitcoin_data_dir)?;
-        Ok(())
+        Ok(parts)
     }
 
     fn run_single_job(&self, job: &Job, run_id: i64) -> Result<()> {
-        let output_file = std::fs::File::create("/tmp/output.log")?;
-        let error_file = std::fs::File::create("/tmp/error.log")?;
+        let output_filename = format!("/tmp/{}-output.log", run_id);
+        let error_filename = format!("/tmp/{}-error.log", run_id);
+        let output_file = std::fs::File::create(&output_filename)?;
+        let error_file = std::fs::File::create(&error_filename)?;
 
         let bench_args = self.process_args(&job.command)?;
         let is_macos = std::env::consts::OS == "macos";
@@ -210,11 +158,15 @@ impl<'a> Bencher<'a> {
         let status = command.spawn()?.wait()?;
 
         if !status.success() {
-            bail!("Job {} failed, see '/tmp/error.log' for details", job.name);
+            bail!(
+                "Job {} failed, see '{}' for details",
+                job.name,
+                error_filename
+            );
         } else {
             info!(
-                "Job {} completed successfully, see '/tmp/output.log' for details",
-                job.name
+                "Job {} completed successfully, see '{}' for details",
+                job.name, output_filename,
             );
         }
 
@@ -228,23 +180,74 @@ impl<'a> Bencher<'a> {
         Ok(())
     }
 
-    fn process_env_vars(&self, env: &Option<Vec<String>>) -> Option<Vec<(OsString, OsString)>> {
-        env.as_ref().map(|env_vars| {
-            env_vars
-                .iter()
-                .filter_map(|var| {
-                    var.split_once('=')
-                        .map(|(key, value)| (OsString::from(key), OsString::from(value)))
-                })
-                .collect()
-        })
+    fn run_benchmarks(&mut self, run_date: i64, commit_id: &str, commit_date: i64) -> Result<()> {
+        let run = Run {
+            id: None,
+            run_date,
+            commit_id: commit_id.to_string(),
+            commit_date,
+            was_master: true,
+        };
+
+        let run_id = self.db.record_run(run)?;
+        let jobs = std::mem::take(&mut self.config.jobs);
+
+        std::env::set_current_dir(self.src_dir)
+            .map_err(|e| anyhow::anyhow!("Failed to change directory: {:?}", e))?;
+        info!("Changed working directory to {}", self.src_dir.display());
+
+        util::checkout_commit(self.src_dir, commit_id).unwrap_or_else(|e| {
+            error!("Error checking out commit: {}", e);
+            std::process::exit(exitcode::SOFTWARE);
+        });
+
+        debug!(
+            "Using date: {:?}, and commit_id: {}",
+            util::unix_timestamp_to_hr(commit_date),
+            commit_id
+        );
+
+        for job in &jobs.jobs {
+            self.run_single_job(job, run_id)?;
+        }
+
+        Ok(())
     }
 
-    fn process_args(&'a self, args: &'a str) -> Result<Vec<&str>> {
-        let parts: Vec<&str> = args.split_whitespace().collect();
-        if parts.is_empty() {
-            bail!("Empty command provided");
+    pub fn run(&mut self) -> Result<()> {
+        let src_dir_path = util::check_source_file(self.src_dir).unwrap_or_else(|e| {
+            error!("Error checking for source code: {}", e);
+            std::process::exit(exitcode::NOINPUT);
+        });
+
+        if let Err(e) = util::fetch_repo(src_dir_path) {
+            error!("Error updating repo: {}", e);
+            std::process::exit(exitcode::SOFTWARE);
         }
-        Ok(parts)
+
+        let run_date = chrono::Utc::now().timestamp();
+        match self.bench_type {
+            BenchType::Single => {
+                let (commit_date, commit_id) = self.setup(run_date)?;
+                self.run_benchmarks(run_date, &commit_id, commit_date)?;
+            }
+            BenchType::Multi => {
+                let options = match &self.options {
+                    BenchOptions::Multi(multi) => multi,
+                    _ => bail!("Invalid options for Multi bench type"),
+                };
+                let start_date =
+                    util::parse_date(options.start).context("Failed to parse start date")?;
+                let end_date = util::parse_date(options.end).context("Failed to parse end date")?;
+
+                let mut current_date = start_date;
+                while current_date <= end_date {
+                    let (commit_date, commit_id) = self.setup(current_date)?;
+                    self.run_benchmarks(run_date, &commit_id, commit_date)?;
+                    current_date += 86400; // Increment by one day (86400 seconds)
+                }
+            }
+        }
+        Ok(())
     }
 }
