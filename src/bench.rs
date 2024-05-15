@@ -28,7 +28,7 @@ pub enum BenchOptions<'a> {
 }
 
 pub struct Single {
-    pub commit: Option<String>,
+    pub commit: String,
 }
 
 pub struct Multi<'a> {
@@ -46,7 +46,7 @@ impl<'a> Bencher<'a> {
     ) -> Result<Self> {
         match &options {
             BenchOptions::Single(single) => {
-                if single.commit.is_none() {
+                if single.commit.is_empty() {
                     bail!("Commit must be provided for Single bench type");
                 }
             }
@@ -69,15 +69,12 @@ impl<'a> Bencher<'a> {
     pub fn setup(&self, date_to_use: i64) -> Result<(i64, String)> {
         let (commit_id, commit_date) = match &self.options {
             BenchOptions::Single(single) => {
-                let commit = single
-                    .commit
-                    .as_ref()
-                    .expect("Commit should be checked in new()");
-                let commit_date = util::get_commit_date(self.src_dir, commit).unwrap_or_else(|e| {
-                    error!("Error fetching commit date: {}", e);
-                    std::process::exit(exitcode::USAGE);
-                });
-                (commit.clone(), commit_date)
+                let commit_date = util::get_commit_date(self.src_dir, &single.commit)
+                    .unwrap_or_else(|e| {
+                        error!("Error fetching commit date: {}", e);
+                        std::process::exit(exitcode::USAGE);
+                    });
+                (single.commit.clone(), commit_date)
             }
             BenchOptions::Multi(_) => {
                 let fetched_commit_id = util::get_commit_id_from_date(self.src_dir, &date_to_use)

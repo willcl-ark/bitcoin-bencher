@@ -17,7 +17,7 @@ fn get_random_bitcoin_dir() -> PathBuf {
         .into_path()
 }
 
-/// Benchmarker which uses /usr/bin/time to benchmark long-running processes, and stores their
+/// Benchmarker which uses /usr/bin/(g)time to benchmark long-running processes, and stores their
 /// results in a simple sqlite db.
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -38,25 +38,25 @@ pub struct Cli {
     #[arg(long, default_value=get_random_bitcoin_dir().into_os_string())]
     pub bitcoin_data_dir: PathBuf,
 
-    /// The subcommands for bitcoin-bench
+    /// Subcommands for bitcoin-bench
     #[clap(subcommand)]
     pub command: Option<Commands>,
 }
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    /// Handle benchmark-related commands
+    /// Benchmark-related commands
     #[command(subcommand)]
     Bench(BenchCommands),
 
-    /// Handle graph-related commands
+    /// Graph-related commands
     #[command(subcommand)]
     Graph(GraphCommands),
 }
 
 #[derive(Debug, Subcommand)]
 pub enum BenchCommands {
-    /// Command to run benchmarks
+    /// Run benchmarks
     Run {
         #[command(subcommand)]
         run_command: RunCommands,
@@ -67,29 +67,29 @@ pub enum BenchCommands {
 pub enum RunCommands {
     /// Run benchmarks once
     Once {
-        /// Commit hash to run tests at.
-        commit: Option<String>,
-
         /// Path to bitcoin source code directory
         src_dir: PathBuf,
+
+        /// git commit hash
+        commit: String,
     },
 
     /// Run benchmarks daily between the start and end dates
     Daily {
+        /// Path to bitcoin source code directory
+        src_dir: PathBuf,
+
         /// Start date for daily benchmarks in YYYY-MM-DD format
         start: String,
 
         /// End date for daily benchmarks in YYYY-MM-DD format
         end: String,
-
-        /// Path to bitcoin source code directory
-        src_dir: PathBuf,
     },
 }
 
 #[derive(Debug, Subcommand)]
 pub enum GraphCommands {
-    /// Command to generate graphs
+    /// Generate graphs
     Generate {},
 }
 
