@@ -6,9 +6,7 @@ use env_logger::Env;
 use graph::plot_job_metrics;
 use log::{error, info};
 
-use crate::bench::{BenchOptions, Multi, Single};
-
-extern crate exitcode;
+use crate::bench::{BenchOptions, BenchType, Bencher, Multi, Single};
 
 mod bench;
 mod cli;
@@ -19,82 +17,85 @@ mod result;
 mod util;
 
 fn main() -> Result<()> {
-    // Setup logging
-    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+    setup_logging();
 
-    // Parse CLI args
-    let cli = Cli::init().unwrap_or_else(|e| {
-        error!("Error initialising cli: {}", e);
-        std::process::exit(exitcode::CONFIG);
-    });
+    let cli = Cli::init().map_err(|e| {
+        error!("Error initializing CLI: {}", e);
+        e
+    })?;
 
-    // Load configuration from TOML
-    let mut config = Config::load_from_file(&cli, &cli.bitcoin_data_dir).unwrap_or_else(|e| {
+    let mut config = Config::load_from_file(&cli, &cli.bitcoin_data_dir).map_err(|e| {
         error!("Error reading config.toml: {}", e);
-        std::process::exit(exitcode::CONFIG);
-    });
+        e
+    })?;
 
-    // Check required binaries exist on PATH
-    if let Err(e) = util::check_binaries_exist(&config) {
+    util::check_binaries_exist(&config).map_err(|e| {
         error!("Error checking binaries: {}", e);
-        std::process::exit(exitcode::UNAVAILABLE);
-    }
+        e
+    })?;
 
-    // Setup db
     let database =
         Database::create_or_load(&cli.bench_data_dir.to_string_lossy(), &cli.bench_db_name)
-            .unwrap_or_else(|e| {
+            .map_err(|e| {
                 error!("Error getting database: {}", e);
-                std::process::exit(exitcode::CANTCREAT);
-            });
+                e
+            })?;
 
-    // Handle CLI commands
     match &cli.command {
         Some(Commands::Bench(BenchCommands::Run { run_command })) => {
-            match run_command {
-                RunCommands::Once { src_dir, commit } => {
-                    let single_options = BenchOptions::Single(Single {
-                        commit: commit.clone(),
-                    });
-                    let mut bencher = bench::Bencher::new(
-                        &mut config,
-                        &database,
-                        src_dir,
-                        bench::BenchType::Single,
-                        single_options,
-                    )?;
-                    if let Err(e) = bencher.run() {
-                        error!("{}", e);
-                        std::process::exit(exitcode::SOFTWARE);
-                    }
-                    info!("Finished running benchmarks");
-                }
-                RunCommands::Daily {
-                    start,
-                    end,
-                    src_dir,
-                } => {
-                    // Run benchmarks daily
-                    let multi_options = BenchOptions::Multi(Multi { start, end });
-                    let mut bencher = bench::Bencher::new(
-                        &mut config,
-                        &database,
-                        src_dir,
-                        bench::BenchType::Multi,
-                        multi_options,
-                    )?;
-                    if let Err(e) = bencher.run() {
-                        error!("{}", e);
-                        std::process::exit(exitcode::SOFTWARE);
-                    }
-                    info!("Finished running daily benchmarks");
-                }
-            }
+            handle_bench_command(run_command, &mut config, &database)?;
         }
         Some(Commands::Graph(_)) => {
             plot_job_metrics(&database, &cli.bench_data_dir.to_string_lossy())?;
         }
-        None => {}
+        None => {
+            info!("No command specified. Use --help for usage information.");
+        }
     }
-    std::process::exit(exitcode::OK);
+
+    Ok(())
+}
+
+fn setup_logging() {
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+}
+
+fn handle_bench_command(
+    run_command: &RunCommands,
+    config: &mut Config,
+    database: &Database,
+) -> Result<()> {
+    match run_command {
+        RunCommands::Once { src_dir, commit } => {
+            let options = BenchOptions::Single(Single {
+                commit: commit.clone(),
+            });
+            run_bencher(config, database, src_dir, BenchType::Single, options)?;
+        }
+        RunCommands::Daily {
+            start,
+            end,
+            src_dir,
+        } => {
+            let options = BenchOptions::Multi(Multi { start, end });
+            run_bencher(config, database, src_dir, BenchType::Multi, options)?;
+        }
+    }
+    Ok(())
+}
+
+fn run_bencher(
+    config: &mut Config,
+    database: &Database,
+    src_dir: &std::path::PathBuf,
+    bench_type: BenchType,
+    options: BenchOptions,
+) -> Result<()> {
+    let mut bencher = Bencher::new(config, database, src_dir, bench_type, options)?;
+    bencher.run().map_err(|e| {
+        error!("Error running benchmarks: {}", e);
+        e
+    })?;
+    info!("Finished running benchmarks");
+    Ok(())
 }

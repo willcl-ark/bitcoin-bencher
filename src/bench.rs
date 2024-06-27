@@ -1,5 +1,5 @@
 use anyhow::{bail, Context, Result};
-use log::{debug, error, info};
+use log::{debug, info};
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -44,19 +44,7 @@ impl<'a> Bencher<'a> {
         bench_type: BenchType,
         options: BenchOptions<'a>,
     ) -> Result<Self> {
-        match &options {
-            BenchOptions::Single(single) => {
-                if single.commit.is_empty() {
-                    bail!("Commit must be provided for Single bench type");
-                }
-            }
-            BenchOptions::Multi(multi) => {
-                if multi.start.is_empty() || multi.end.is_empty() {
-                    bail!("Start and end dates must be provided for Multi bench type");
-                }
-            }
-        }
-
+        Self::validate_options(&options)?;
         Ok(Bencher {
             config,
             db,
@@ -66,47 +54,46 @@ impl<'a> Bencher<'a> {
         })
     }
 
+    fn validate_options(options: &BenchOptions) -> Result<()> {
+        match options {
+            BenchOptions::Single(single) if single.commit.is_empty() => {
+                bail!("Commit must be provided for Single bench type")
+            }
+            BenchOptions::Multi(multi) if multi.start.is_empty() || multi.end.is_empty() => {
+                bail!("Start and end dates must be provided for Multi bench type")
+            }
+            _ => Ok(()),
+        }
+    }
+
     pub fn setup(&self, date_to_use: i64) -> Result<(i64, String)> {
-        let (commit_id, commit_date) = match &self.options {
+        match &self.options {
             BenchOptions::Single(single) => {
                 let commit_date = util::get_commit_date(self.src_dir, &single.commit)
-                    .unwrap_or_else(|e| {
-                        error!("Error fetching commit date: {}", e);
-                        std::process::exit(exitcode::USAGE);
-                    });
-                (single.commit.clone(), commit_date)
+                    .context("Error fetching commit date")?;
+                Ok((commit_date, single.commit.clone()))
             }
             BenchOptions::Multi(_) => {
-                let fetched_commit_id = util::get_commit_id_from_date(self.src_dir, &date_to_use)
-                    .unwrap_or_else(|e| {
-                        error!("Error fetching commit ID: {}", e);
-                        std::process::exit(exitcode::USAGE);
-                    });
-                let commit_date = util::get_commit_date(self.src_dir, &fetched_commit_id)
-                    .unwrap_or_else(|e| {
-                        error!("Error fetching commit date: {}", e);
-                        std::process::exit(exitcode::USAGE);
-                    });
-                (fetched_commit_id, commit_date)
+                let commit_id = util::get_commit_id_from_date(self.src_dir, &date_to_use)
+                    .context("Error fetching commit ID")?;
+                let commit_date = util::get_commit_date(self.src_dir, &commit_id)
+                    .context("Error fetching commit date")?;
+                Ok((commit_date, commit_id))
             }
-        };
-
-        Ok((commit_date, commit_id))
+        }
     }
 
-    fn process_env_vars(&self, env: &Option<Vec<String>>) -> Option<Vec<(OsString, OsString)>> {
-        env.as_ref().map(|env_vars| {
-            env_vars
-                .iter()
-                .filter_map(|var| {
-                    var.split_once('=')
-                        .map(|(key, value)| (OsString::from(key), OsString::from(value)))
-                })
-                .collect()
-        })
+    fn process_env_vars(&self, env: &Option<Vec<String>>) -> Vec<(OsString, OsString)> {
+        env.iter()
+            .flat_map(|env_vars| env_vars.iter())
+            .filter_map(|var| {
+                var.split_once('=')
+                    .map(|(key, value)| (OsString::from(key), OsString::from(value)))
+            })
+            .collect()
     }
 
-    fn process_args(&'a self, args: &'a str) -> Result<Vec<&str>> {
+    fn process_args<'b>(&self, args: &'b str) -> Result<Vec<&'b str>> {
         let parts: Vec<&str> = args.split_whitespace().collect();
         if parts.is_empty() {
             bail!("Empty command provided");
@@ -121,42 +108,57 @@ impl<'a> Bencher<'a> {
         let error_file = std::fs::File::create(&error_filename)?;
 
         let bench_args = self.process_args(&job.command)?;
-        let is_macos = std::env::consts::OS == "macos";
-        let mut command = if job.bench {
-            let mut cmd = if is_macos {
-                Command::new("/usr/local/bin/gtime")
-            } else {
-                Command::new("/usr/bin/time")
-            };
-            cmd.args([
-                "-v",
-                format!("--output={}", job.outfile.as_ref().unwrap()).as_str(),
-            ])
-            .args(&bench_args)
-            .stdout(Stdio::from(output_file))
-            .stderr(Stdio::from(error_file));
+        let mut command = self.create_command(job, &bench_args, output_file, error_file)?;
 
-            cmd
-        } else {
-            let parts: Vec<&str> = job.command.split_whitespace().collect();
-            if parts.is_empty() {
-                bail!("Empty command provided for job {}", job.name);
-            }
-            let (cmd, args) = parts.split_at(1);
-            let mut cmd = Command::new(cmd[0]);
-            cmd.args(args)
-                .stdout(Stdio::from(output_file))
-                .stderr(Stdio::from(error_file));
-            cmd
-        };
-
-        if let Some(envs) = self.process_env_vars(&job.env) {
-            command.envs(envs);
-        }
+        let envs = self.process_env_vars(&job.env);
+        command.envs(envs);
 
         info!("Running command: {:?}", command);
         let status = command.spawn()?.wait()?;
 
+        self.handle_job_result(status, job, run_id, &output_filename, &error_filename)?;
+
+        Ok(())
+    }
+
+    fn create_command(
+        &self,
+        job: &Job,
+        bench_args: &[&str],
+        output_file: std::fs::File,
+        error_file: std::fs::File,
+    ) -> Result<Command> {
+        if job.bench {
+            let mut cmd = if cfg!(target_os = "macos") {
+                Command::new("/usr/local/bin/gtime")
+            } else {
+                Command::new("/usr/bin/time")
+            };
+            cmd.args(["-v", &format!("--output={}", job.outfile.as_ref().unwrap())])
+                .args(bench_args)
+                .stdout(Stdio::from(output_file))
+                .stderr(Stdio::from(error_file));
+            Ok(cmd)
+        } else {
+            let (cmd_name, args) = bench_args
+                .split_first()
+                .ok_or_else(|| anyhow::anyhow!("Empty command provided for job {}", job.name))?;
+            let mut cmd = Command::new(cmd_name);
+            cmd.args(args)
+                .stdout(Stdio::from(output_file))
+                .stderr(Stdio::from(error_file));
+            Ok(cmd)
+        }
+    }
+
+    fn handle_job_result(
+        &self,
+        status: std::process::ExitStatus,
+        job: &Job,
+        run_id: i64,
+        output_filename: &str,
+        error_filename: &str,
+    ) -> Result<()> {
         if !status.success() {
             bail!(
                 "Job {} failed, see '{}' for details",
@@ -166,7 +168,7 @@ impl<'a> Bencher<'a> {
         } else {
             info!(
                 "Job {} completed successfully, see '{}' for details",
-                job.name, output_filename,
+                job.name, output_filename
             );
         }
 
@@ -192,14 +194,10 @@ impl<'a> Bencher<'a> {
         let run_id = self.db.record_run(run)?;
         let jobs = std::mem::take(&mut self.config.jobs);
 
-        std::env::set_current_dir(self.src_dir)
-            .map_err(|e| anyhow::anyhow!("Failed to change directory: {:?}", e))?;
+        std::env::set_current_dir(self.src_dir).context("Failed to change directory")?;
         info!("Changed working directory to {}", self.src_dir.display());
 
-        util::checkout_commit(self.src_dir, commit_id).unwrap_or_else(|e| {
-            error!("Error checking out commit: {}", e);
-            std::process::exit(exitcode::SOFTWARE);
-        });
+        util::checkout_commit(self.src_dir, commit_id).context("Error checking out commit")?;
 
         debug!(
             "Using date: {:?}, and commit_id: {}",
@@ -210,50 +208,51 @@ impl<'a> Bencher<'a> {
         for job in &jobs.jobs {
             self.run_single_job(job, run_id)?;
         }
-        self.config.jobs = jobs; // What was this doing again?
+        self.config.jobs = jobs;
 
         Ok(())
     }
 
     pub fn run(&mut self) -> Result<()> {
-        let src_dir_path = util::check_source_file(self.src_dir).unwrap_or_else(|e| {
-            error!("Error checking for source code: {}", e);
-            std::process::exit(exitcode::NOINPUT);
-        });
+        util::check_source_file(self.src_dir).context("Error checking for source code")?;
 
-        if let Err(e) = util::fetch_repo(src_dir_path) {
-            error!("Error updating repo: {}", e);
-            std::process::exit(exitcode::SOFTWARE);
-        }
+        util::fetch_repo(self.src_dir).context("Error updating repo")?;
 
         let run_date = chrono::Utc::now().timestamp();
         match self.bench_type {
-            BenchType::Single => {
-                let (commit_date, commit_id) = self.setup(run_date)?;
-                self.run_benchmarks(run_date, &commit_id, commit_date)?;
-                if self.config.jobs.cleanup {
-                    util::erase_dir_and_contents(&self.config.settings.bitcoin_data_dir)?;
-                }
-            }
-            BenchType::Multi => {
-                let options = match &self.options {
-                    BenchOptions::Multi(multi) => multi,
-                    _ => bail!("Invalid options for Multi bench type"),
-                };
-                let start_date =
-                    util::parse_date(options.start).context("Failed to parse start date")?;
-                let end_date = util::parse_date(options.end).context("Failed to parse end date")?;
+            BenchType::Single => self.run_single_bench(run_date)?,
+            BenchType::Multi => self.run_multi_bench(run_date)?,
+        }
+        Ok(())
+    }
 
-                let mut current_date = start_date;
-                while current_date <= end_date {
-                    let (commit_date, commit_id) = self.setup(current_date)?;
-                    self.run_benchmarks(run_date, &commit_id, commit_date)?;
-                    current_date += 86400; // Increment by one day (86400 seconds)
-                    if self.config.jobs.cleanup {
-                        util::erase_dir_and_contents(&self.config.settings.bitcoin_data_dir)?;
-                    }
-                }
-            }
+    fn run_single_bench(&mut self, run_date: i64) -> Result<()> {
+        let (commit_date, commit_id) = self.setup(run_date)?;
+        self.run_benchmarks(run_date, &commit_id, commit_date)?;
+        self.cleanup_if_needed()
+    }
+
+    fn run_multi_bench(&mut self, run_date: i64) -> Result<()> {
+        let options = match &self.options {
+            BenchOptions::Multi(multi) => multi,
+            _ => bail!("Invalid options for Multi bench type"),
+        };
+        let start_date = util::parse_date(options.start).context("Failed to parse start date")?;
+        let end_date = util::parse_date(options.end).context("Failed to parse end date")?;
+
+        let mut current_date = start_date;
+        while current_date <= end_date {
+            let (commit_date, commit_id) = self.setup(current_date)?;
+            self.run_benchmarks(run_date, &commit_id, commit_date)?;
+            current_date += 86400; // Increment by one day (86400 seconds)
+            self.cleanup_if_needed()?;
+        }
+        Ok(())
+    }
+
+    fn cleanup_if_needed(&self) -> Result<()> {
+        if self.config.jobs.cleanup {
+            util::erase_dir_and_contents(&self.config.settings.bitcoin_data_dir)?;
         }
         Ok(())
     }

@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Context, Result};
 use log::{debug, info};
 use rusqlite::{params, Connection};
 use std::path::Path;
@@ -33,21 +33,20 @@ impl Database {
             data_dir_path, db_name
         );
 
-        std::fs::create_dir_all(data_dir_path).map_err(|e| {
-            anyhow!(
-                "Failed to create data directory '{}': {}",
-                data_dir_path.display(),
-                e
+        std::fs::create_dir_all(data_dir_path).with_context(|| {
+            format!(
+                "Failed to create data directory '{}'",
+                data_dir_path.display()
             )
         })?;
 
         let db_path = data_dir_path.join(db_name);
         let db_path_str = db_path
             .to_str()
-            .ok_or_else(|| anyhow!("Failed to convert database path to string"))?;
+            .ok_or_else(|| anyhow::anyhow!("Failed to convert database path to string"))?;
 
         let conn = Connection::open(db_path_str)
-            .map_err(|e| anyhow!("Failed to open database at '{}': {}", db_path_str, e))?;
+            .with_context(|| format!("Failed to open database at '{}'", db_path_str))?;
 
         let db = Database { conn };
         db.create_tables()?;
@@ -107,20 +106,11 @@ impl Database {
     pub fn record_job(&self, run_id: i64, result: TimeResult) -> Result<i64> {
         self.conn.execute(
             "INSERT INTO jobs (
-                run_id,
-                job_name,
-                user_time,
-                system_time,
-                percent_of_cpu,
-                max_resident_set_size_kb,
-                major_page_faults,
-                minor_page_faults,
-                voluntary_context_switches,
-                involuntary_context_switches,
-                file_system_outputs,
-                exit_status
-            ) VALUES
-            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                run_id, job_name, user_time, system_time, percent_of_cpu,
+                max_resident_set_size_kb, major_page_faults, minor_page_faults,
+                voluntary_context_switches, involuntary_context_switches,
+                file_system_outputs, exit_status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params![
                 run_id,
                 result.command,
@@ -140,15 +130,13 @@ impl Database {
         Ok(self.conn.last_insert_rowid())
     }
 
-    pub fn get_jobs_by_name(&self, job_name: &String) -> Result<Vec<(Job, Run)>> {
+    pub fn get_jobs_by_name(&self, job_name: &str) -> Result<Vec<(Job, Run)>> {
         let mut stmt = self.conn.prepare(
-            "
-            SELECT jobs.*, runs.commit_id, runs.run_date, runs.was_master
+            "SELECT jobs.*, runs.commit_id, runs.run_date, runs.was_master
             FROM jobs
             INNER JOIN runs ON jobs.run_id = runs.run_id
             WHERE job_name = ?
-            ORDER BY jobs.run_id ASC
-        ",
+            ORDER BY jobs.run_id ASC",
         )?;
 
         let job_iter = stmt.query_map([job_name], |row| {
@@ -180,12 +168,7 @@ impl Database {
             ))
         })?;
 
-        let mut jobs_with_runs = Vec::new();
-        for job in job_iter {
-            debug!("Got job with run: {:?}", job);
-            jobs_with_runs.push(job?);
-        }
-
-        Ok(jobs_with_runs)
+        let jobs_with_runs: Result<Vec<_>, _> = job_iter.collect();
+        jobs_with_runs.map_err(anyhow::Error::from)
     }
 }
